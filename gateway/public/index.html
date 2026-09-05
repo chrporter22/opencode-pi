@@ -15,33 +15,74 @@
     --progress-inner: var(--accent);
     --viridis-0: #440154; --viridis-1: #3b528b; --viridis-2: #21918c;
     --viridis-3: #5ec962; --viridis-4: #fde725;
+    --ac-conn: #4fd3c7; --ac-sys: #ff7b54; --ac-model: #b07ae2; --ac-host: #64d88b;
+    --ac-pg: #5cb8f6; --ac-stream: #fde725; --ac-evt: #ff9d5c;
+    --glow: rgba(86,156,214,.35); --bar: #171717; --sidebar: #17171a;
     --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "SF Mono", Monaco, Consolas, monospace;
   }
   body[data-theme="viridis"] {
-    --card: #1f2629; --border: #2e4147; --input: #26343a; --chip-bg: #2c3a40;
-    --accent: #5ec962; --ok: #5ec962; --err: #f2a05a;
-    --progress-inner: linear-gradient(90deg, var(--viridis-0), var(--viridis-2), var(--viridis-4));
+    --glow: rgba(86,201,98,.30); --sidebar: #16201f; --bar: #161a1c;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
     background: var(--bg); color: var(--fg); font-size: 14px; min-height: 100vh;
-    padding: 24px; color-scheme: dark;
+    padding-bottom: 76px; color-scheme: dark;
   }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-  header h1 { font-size: 18px; font-weight: 600; }
-  header .spacer { flex: 1; min-width: 12px; }
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 220px; flex-shrink: 0; position: fixed; inset: 0 auto 0 0;
+    display: flex; flex-direction: column; gap: 4px;
+    background: var(--sidebar); border-right: 1px solid var(--border);
+    padding: 18px 12px; overflow-y: auto; z-index: 5;
+  }
+  .sidebar .brand {
+    font-family: var(--mono); font-weight: 600; font-size: 15px; letter-spacing: .5px;
+    padding: 0 10px 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .side-nav { display: flex; flex-direction: column; gap: 2px; }
+  .side-nav a {
+    display: flex; align-items: center; gap: 10px; text-decoration: none;
+    color: var(--dim); font-size: 13px; padding: 7px 10px; border-radius: 6px;
+    border-left: 3px solid transparent; transition: background .15s, color .15s, border-color .15s;
+  }
+  .side-nav a .marker { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .side-nav a:hover { background: rgba(255,255,255,.04); color: var(--fg); }
+  .side-nav a.active {
+    background: rgba(255,255,255,.05); color: var(--fg); border-left-color: var(--accent);
+    box-shadow: 0 0 12px -2px var(--glow);
+  }
+  .nav-label { flex: 1; }
+  .content { flex: 1; margin-left: 220px; min-width: 0; padding: 20px 24px 8px; }
+  .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 18px; font-weight: 600; }
+  .topbar .spacer { flex: 1; min-width: 12px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); display: inline-block; }
-  .dot.ok { background: var(--ok); }
-  .dot.err { background: var(--err); }
-  .card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-    padding: 16px; min-width: 0;
+  .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.err { background: var(--err); box-shadow: 0 0 8px var(--err); }
+  .dot.ok.pulse { animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 2px var(--ok); }
+    50% { box-shadow: 0 0 12px var(--ok); }
   }
-  .dashboard { display: grid; gap: 16px; max-width: 1200px; margin: 0 auto; grid-template-columns: 1fr; align-items: start; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 16px 14px; min-width: 0; border-top: 3px solid var(--border);
+    scroll-margin-top: 12px; transition: box-shadow .18s, transform .18s;
+  }
+  .card:hover { box-shadow: 0 6px 22px -8px var(--glow); transform: translateY(-1px); }
+  .card.ac-conn { border-top-color: var(--ac-conn); } .card.ac-conn h2 { color: var(--ac-conn); }
+  .card.ac-sys { border-top-color: var(--ac-sys); } .card.ac-sys h2 { color: var(--ac-sys); }
+  .card.ac-model { border-top-color: var(--ac-model); } .card.ac-model h2 { color: var(--ac-model); }
+  .card.ac-host { border-top-color: var(--ac-host); } .card.ac-host h2 { color: var(--ac-host); }
+  .card.ac-pg { border-top-color: var(--ac-pg); } .card.ac-pg h2 { color: var(--ac-pg); }
+  .card.ac-stream { border-top-color: var(--ac-stream); } .card.ac-stream h2 { color: var(--ac-stream); }
+  .card.ac-evt { border-top-color: var(--ac-evt); } .card.ac-evt h2 { color: var(--ac-evt); }
+  .dashboard { display: grid; gap: 16px; grid-template-columns: 1fr; }
   @media (min-width: 1024px) {
     .dashboard { grid-template-columns: repeat(3, 1fr); }
-    .card.streams-card { grid-column: span 2; }
+    .card.playground-card { grid-column: span 2; }
+    .card.streams-card { grid-column: 1 / -1; }
     .card.events-card { grid-column: 1 / -1; }
   }
   .table-scroll { overflow-x: auto; }
@@ -51,6 +92,31 @@
   table.stats td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.stats td.dim { color: var(--faint); }
   .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); margin-bottom: 12px; }
+  .statusbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 8;
+    background: var(--bar); border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 8px 18px; font-family: var(--mono); font-size: 12px; color: var(--dim);
+  }
+  .statusbar .st { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .statusbar .st .lb { color: var(--faint); }
+  .statusbar .spacer { flex: 1; }
+  .statusbar .clock { color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .statusbar .chip { font-size: 11px; }
+  .statusbar button {
+    background: transparent; color: var(--dim); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px; margin: 0;
+  }
+  @media (max-width: 900px) {
+    .sidebar { width: 54px; padding: 14px 8px; }
+    .sidebar .brand { padding: 0 0 12px; justify-content: center; }
+    .sidebar .brand .brand-txt, .side-nav .nav-label { display: none; }
+    .side-nav a { justify-content: center; padding: 7px 0; }
+    .content { margin-left: 54px; padding: 16px 14px 4px; }
+    .statusbar { font-size: 11px; gap: 10px; padding: 6px 12px; }
+    .statusbar .hide-sm { display: none; }
+  }
+  @media (min-width: 1024px) { .content { max-width: 1280px; } }
   .row {
     display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline;
     justify-content: space-between; padding: 4px 0; min-width: 0;
@@ -116,22 +182,35 @@
 </style>
 </head>
 <body>
-  <header>
-    <span class="dot" id="statusDot"></span>
-    <h1>opencode-pi</h1>
-    <span style="color:var(--faint);font-size:13px">Control center</span>
-    <span class="spacer"></span>
-    <button id="btnTheme">Theme: Dark</button>
-  </header>
+  <div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="marker" style="background:var(--accent)"></span><span class="brand-txt">opencode-pi</span></div>
+    <nav class="side-nav" id="sideNav">
+      <a href="#sec-conn"><span class="marker" style="background:var(--ac-conn)"></span><span class="nav-label">Connection</span></a>
+      <a href="#sec-sys"><span class="marker" style="background:var(--ac-sys)"></span><span class="nav-label">System</span></a>
+      <a href="#sec-model"><span class="marker" style="background:var(--ac-model)"></span><span class="nav-label">Model</span></a>
+      <a href="#sec-host"><span class="marker" style="background:var(--ac-host)"></span><span class="nav-label">Host</span></a>
+      <a href="#sec-pg"><span class="marker" style="background:var(--ac-pg)"></span><span class="nav-label">Playground</span></a>
+      <a href="#sec-streams"><span class="marker" style="background:var(--ac-stream)"></span><span class="nav-label">Streams</span></a>
+      <a href="#sec-evt"><span class="marker" style="background:var(--ac-evt)"></span><span class="nav-label">Log</span></a>
+    </nav>
+  </aside>
 
-  <main class="dashboard">
-  <div class="card">
+  <main class="content">
+    <div class="topbar">
+      <h1><span class="dot" id="statusDot"></span>&nbsp;Control center</h1>
+      <span class="spacer"></span>
+      <button id="btnTheme">Theme: Dark</button>
+    </div>
+
+    <div class="dashboard">
+  <div class="card ac-conn" id="sec-conn">
     <h2>Connection</h2>
     <input type="password" id="key" placeholder="Admin API key" autocomplete="off">
     <input type="password" id="iKey" placeholder="Inference API key (playground)" autocomplete="off">
   </div>
 
-  <div class="card">
+  <div class="card ac-sys" id="sec-sys">
     <h2>System</h2>
     <table class="stats">
       <tbody>
@@ -146,7 +225,7 @@
     </table>
   </div>
 
-  <div class="card">
+  <div class="card ac-model" id="sec-model">
     <h2>Model</h2>
     <div class="row"><span class="k">name</span><span id="mName">—</span></div>
     <div class="row"><span class="k">quantization</span><span id="mQuant">—</span></div>
@@ -163,7 +242,37 @@
     <button id="btnUpdate">Update model</button>
   </div>
 
-  <div class="card streams-card">
+  <div class="card ac-host" id="sec-host">
+    <h2>Host</h2>
+    <table class="stats">
+      <tbody>
+        <tr><td class="k">OS</td><td class="num" id="hOs">—</td></tr>
+        <tr><td class="k">Host</td><td class="num" id="hHost">—</td></tr>
+        <tr><td class="k">Kernel</td><td class="num" id="hKernel">—</td></tr>
+        <tr><td class="k">Arch</td><td class="num" id="hArch">—</td></tr>
+        <tr><td class="k">Model</td><td class="num" id="hModel">—</td></tr>
+        <tr><td class="k">CPU</td><td class="num" id="hCpu">—</td></tr>
+        <tr><td class="k">Cores</td><td class="num" id="hCores">—</td></tr>
+        <tr><td class="k">Memory</td><td class="num" id="hMem">—</td></tr>
+        <tr><td class="k">Uptime</td><td class="num" id="hUp">—</td></tr>
+        <tr><td class="k">Local IP</td><td class="num" id="hIp">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card playground-card ac-pg" id="sec-pg">
+    <h2>Playground</h2>
+    <div class="conv" id="convo">
+      <div class="msg assistant hint" id="convHint">Send a message to start a conversation through /v1/chat/completions.</div>
+    </div>
+    <input id="chatInput" placeholder="Message the model…" autocomplete="off">
+    <div class="row actions" style="padding-top:4px">
+      <button id="btnSend">Send</button>
+      <button id="btnStop" disabled>Stop</button>
+    </div>
+  </div>
+
+  <div class="card streams-card ac-stream" id="sec-streams">
     <h2>Inference streams <span id="streamCount" class="chip" style="margin-left:6px">0 active</span></h2>
     <div class="table-scroll">
     <table class="streams">
@@ -176,23 +285,15 @@
     <div id="streamEmpty" style="color:var(--faint);font-size:13px;padding:8px 0">No inference requests yet.</div>
   </div>
 
-  <div class="card">
-    <h2>Playground</h2>
-    <div class="conv" id="convo">
-      <div class="msg assistant hint" id="convHint">Send a message to start a conversation through /v1/chat/completions.</div>
-    </div>
-    <input id="chatInput" placeholder="Message the model…" autocomplete="off">
-    <div class="row actions" style="padding-top:4px">
-      <button id="btnSend">Send</button>
-      <button id="btnStop" disabled>Stop</button>
-    </div>
-  </div>
-
-  <div class="card events-card">
+  <div class="card events-card ac-evt" id="sec-evt">
     <h2>Realtime events <button id="btnClearLog" style="float:right">Clear</button></h2>
     <div class="log" id="log"></div>
   </div>
+    </div>
   </main>
+  </div>
+
+  <div class="statusbar" id="statusbar"></div>
 
 <script>
   const dot = document.getElementById("statusDot");
@@ -211,6 +312,30 @@
     if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
     if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(0) + " MB";
     return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
+  }
+  function fmtUptime(s) {
+    if (s == null) return "—";
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return (d > 0 ? d + "d " : "") + h + "h " + m + "m";
+  }
+  async function loadHost() {
+    const hdrs = headers();
+    if (!hdrs) return;
+    try {
+      const h = await (await fetch("/api/system/host", { headers: hdrs })).json();
+      $s("hOs", h.os);
+      $s("hHost", h.hostname);
+      $s("hKernel", h.kernel);
+      $s("hArch", h.arch);
+      $s("hModel", h.model || "—");
+      $s("hCpu", h.cpuModel);
+      $s("hCores", String(h.cpuCores));
+      $s("hMem", fmtBytes(h.memoryTotalBytes));
+      $s("hUp", fmtUptime(h.uptimeSeconds));
+      $s("hIp", h.localIp || "—");
+    } catch {}
   }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => (
@@ -238,6 +363,72 @@
     if (ok.includes(v)) el.classList.add("ok");
     else if (err.includes(v)) el.classList.add("err");
     else if (v !== "—") el.classList.add("warn");
+  }
+
+  function buildStatusbar() {
+    const bar = q("statusbar");
+    const st = (label, content, hideSm) => {
+      const s = document.createElement("span");
+      if (hideSm) s.className = "st hide-sm"; else s.className = "st";
+      s.innerHTML = '<span class="lb">' + label + "</span> " + content;
+      return s;
+    };
+    bar.append(
+      st("gw", '<span id="sbGw" class="chip">—</span>'),
+      st("llama", '<span id="sbLl" class="chip">—</span>'),
+      st("model", '<span id="sbModel" class="chip">—</span>', true),
+      st("cpu", '<span id="sbCpu">—</span>', true),
+      st("mem", '<span id="sbMem">—</span>', true),
+      st("tok/s", '<span id="sbTps">—</span>'),
+      st("api/min", '<span id="sbApm">—</span>'),
+    );
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+    bar.appendChild(spacer);
+    const theme = document.createElement("button");
+    theme.id = "btnThemeBar";
+    theme.textContent = "Theme";
+    bar.appendChild(theme);
+    const clock = document.createElement("span");
+    clock.className = "clock";
+    clock.id = "sbClock";
+    bar.appendChild(clock);
+    theme.addEventListener("click", () => {
+      localStorage.setItem("piTheme", document.body.dataset.theme === "viridis" ? "dark" : "viridis");
+      applyTheme();
+    });
+  }
+  function renderStatusbar(state) {
+    if (!q("sbGw")) buildStatusbar();
+    q("sbGw").className = "chip";
+    q("sbGw").classList.add(state.gateway === "online" ? "ok" : "err");
+    q("sbGw").textContent = state.gateway === "online" ? "online" : "—";
+    q("sbLl").className = "chip";
+    q("sbLl").classList.add(state.llama === "online" ? "ok" : "err");
+    q("sbLl").textContent = state.llama === "online" ? "online" : "offline";
+    q("sbModel").className = "chip";
+    q("sbModel").classList.add("warn");
+    q("sbModel").textContent = state.model || "—";
+    q("sbCpu").textContent = state.cpu != null ? state.cpu.toFixed(0) + "%" : "—";
+    q("sbMem").textContent = state.memory != null ? state.memory.toFixed(0) + "%" : "—";
+    q("sbTps").textContent = state.tokensPerSecond != null ? state.tokensPerSecond.toFixed(1) : "—";
+    q("sbApm").textContent = state.requestsPerMinute != null ? String(state.requestsPerMinute) : "—";
+  }
+  function tickClock() {
+    if (q("sbClock")) q("sbClock").textContent = new Date().toLocaleString();
+  }
+  function setupScrollspy() {
+    const links = [...document.querySelectorAll("#sideNav a")];
+    const sections = links.map((a) => q(a.getAttribute("href").slice(1)));
+    const onScroll = () => {
+      const pos = window.scrollY + 120;
+      let current = sections[0]?.id;
+      for (const s of sections) if (s && s.offsetTop <= pos) current = s.id;
+      links.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + current));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    onScroll();
   }
 
   function loadRank(v) {
@@ -274,7 +465,7 @@
   async function refresh() {
     try {
       await fetch("/health");
-      dot.className = "dot ok";
+      dot.className = "dot ok pulse";
       const hdrs = headers();
       if (hdrs) {
         const s = await (await fetch("/api/status", { headers: hdrs })).json();
@@ -294,6 +485,8 @@
         }
         const sys = await (await fetch("/api/system", { headers: hdrs })).json();
         renderSystem(sys);
+        renderStatusbar({ gateway: s.gateway, llama: s.llama, model: m.name, ...sys });
+        loadHost();
         try { await loadRequests(); } catch {}
       }
     } catch (e) {
@@ -546,7 +739,7 @@
       }
       if (obj.type === "model.status") refresh();
       if (obj.type === "llama.status" || obj.type === "gateway.status") refresh();
-      if (obj.type === "system.metrics") renderSystem(obj);
+      if (obj.type === "system.metrics") { renderSystem(obj); renderStatusbar({ gateway: q("sbGw")?.dataset?.gw || "online", llama: "online", model: q("sbModel")?.textContent, ...obj }); }
       handleRequestEvent(obj);
     };
     ws.onerror = () => { dot.className = "dot err"; };
@@ -565,6 +758,10 @@
   keyInput.value = localStorage.getItem("adminKey") || "";
   iKeyInput.value = localStorage.getItem("inferenceKey") || "";
   applyTheme();
+  buildStatusbar();
+  tickClock();
+  setInterval(tickClock, 1000);
+  setupScrollspy();
   setInterval(refresh, 5000);
   refresh();
   if (keyInput.value) connectWs(keyInput.value);

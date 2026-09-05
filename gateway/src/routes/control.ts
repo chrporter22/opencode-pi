@@ -6,6 +6,7 @@ import type { RuntimeState } from "../state.js";
 import type { LlamaSupervisor } from "../modules/llama/supervisor.js";
 import type { RequestTracker } from "../requests.js";
 import { readMetadata } from "../model/model-store.js";
+import { readHostInfo } from "../hostinfo.js";
 import { updateModelAction } from "../model/actions/update-model.action.js";
 
 export interface ControlDeps {
@@ -82,6 +83,10 @@ export function controlRouter(deps: ControlDeps): Router {
       tokensPerSecond: s.tokensPerSecond,
       requestsPerMinute: deps.requests.requestsPerMinute(),
     });
+  });
+
+  router.get("/system/host", (_req, res) => {
+    res.json(readHostInfo());
   });
 
   router.get("/metrics", async (_req, res) => {

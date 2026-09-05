@@ -350,6 +350,30 @@ log
     `gap`/`wrap`/`min-width:0` with `overflow-wrap:anywhere` on values; long status values
     render as discrete chips or table cells instead of raw JSON blobs; long-form areas
     scroll within their cards.
+51. **System metrics table.** The control center renders a System card with CPU %, Memory %,
+    temperature, disk-used %, token rate, and a rolling **API calls per minute** (start
+    requests in the last 60s), backfilled from `GET /api/system` and updated live from
+    `system.metrics` WebSocket events. CPU and memory are colored on the Viridis load ramp.
+52. **Host details card.** A Host card (fastfetch-style, stats table) shows instance details:
+    OS pretty-name, Host/hostname, Kernel, Arch, Pi hardware Model line, CPU model + core
+    count, total memory, uptime (`Xd Xh Xm`), and the local IPv4. Sourced from
+    `GET /api/system/host` (admin key). Because the UI reads through the gateway container,
+    these are the container-visible host values — the real Pi CPU/cores/kernel/uptime/memory
+    and hardware model; OS and hostname reflect the container image.
+53. **Log window.** Realtime events render as a scrollable, color-tagged log in the events
+    card: each line shows `[time] tag  message`, auto-scrolls when the view is at the bottom,
+    is capped at 300 lines, and has a Clear button. Error/warn `log` events and request
+    failures are colored distinctly.
+54. **Error drill-down.** In the streams table an `error` status is clickable and toggles an
+    inline `reason:` row showing the error message for that request.
+55. **Shell, navigation & theme.** The control center is a single page with a fixed left
+    sidebar (brand mark + one link per section, each with a colored marker matching its card
+    accent; the active section highlights via scrollspy; on narrow screens the sidebar
+    collapses to a compact rail) and a fixed bottom status bar: live gateway / llama / model
+    chips, CPU %, memory %, token rate, API calls/min, a 1-second clock, and the theme toggle.
+    Cards carry per-module accent colors (Connection, System, Model, Host, Playground,
+    Streams, Events) on their top border and card title, with a subtle glow/hover/pulse
+    treatment so the UI reads as alive. The Dark/Viridis toggle (§6.12 #48) is preserved.
 
 ## 7. HTTP API Reference
 
@@ -360,8 +384,9 @@ log
 | GET    | `/health`            | Gateway liveness (no auth)                 |
 | GET    | `/api/status`        | Aggregated system + model + service status |
 | GET    | `/api/model`         | Loaded model metadata                      |
-| GET    | `/api/system`        | CPU / RAM / temperature / disk             |
-| GET    | `/api/metrics`       | Current metrics snapshot (incl. `tok/s`)   |
+| GET    | `/api/system`        | CPU / RAM / temperature / disk + `requestsPerMinute` |
+| GET    | `/api/system/host`   | Host details (OS, kernel, arch, model, CPU, mem, uptime, IP) |
+| GET    | `/api/metrics`       | Current metrics snapshot (`tok/s`, `requestsPerMinute`) |
 | GET    | `/api/logs`          | Recent log entries                         |
 | GET    | `/api/requests`      | Recent inference request lifecycle records |
 | POST   | `/api/model/update`  | Download & atomically swap a model         |
@@ -419,7 +444,7 @@ All events are JSON objects with at least a `type` and a `timestamp`.
 
 | Event                | Payload (besides `type`, `timestamp`)                      |
 |----------------------|------------------------------------------------------------|
-| `system.metrics`     | `cpu`, `memory`, `temperature`, `tokensPerSecond`          |
+| `system.metrics`     | `cpu`, `memory`, `temperature`, `tokensPerSecond`, `requestsPerMinute` |
 | `llama.status`       | `status`                                                   |
 | `gateway.status`     | `status`                                                   |
 | `model.status`       | `status`                                                   |
@@ -438,7 +463,8 @@ Example — metrics:
   "cpu": 72,
   "memory": 61,
   "temperature": 62,
-  "tokensPerSecond": 18.4
+  "tokensPerSecond": 18.4,
+  "requestsPerMinute": 5
 }
 ```
 
@@ -506,6 +532,7 @@ A table of recent `/v1/*` inference requests, newest first (bounded, ~20 rows):
 - Backfilled from `GET /api/requests` on load; live rows are prepended from `request.started` / `request.completed` / `request.error` WebSocket events.
 - The `tok/s` cell is tinted on a Viridis ramp (slow → fast, `#440154` → `#fde725`); rows with no token data show `—`.
 - A small "N active" counter in the card heading tracks streams that are `started` but not yet done.
+- An `error` status is clickable (§6.12 #54): clicking toggles an inline row showing the request's error reason.
 
 ### 9.6 Theme & typography
 
@@ -517,6 +544,21 @@ A table of recent `/v1/*` inference requests, newest first (bounded, ~20 rows):
 - Flex `.row`s get `gap`, `wrap`, and `min-width:0`; values wrap with `overflow-wrap:anywhere` so long labels and values never collide.
 - Raw `JSON.stringify` status blobs are replaced by discrete status chips and structured rows.
 - The header and cards wrap on narrow widths; `pre` and table regions scroll inside their cards.
+
+### 9.8 Module layout
+
+The page is wrapped in a shell: a fixed left sidebar (brand + section links with accent
+markers, scrollspy highlight, collapsing to a rail on narrow screens) and a fixed bottom
+status bar. On wide screens the dashboard is a 3-column grid laid out top-to-bottom:
+
+1. **Metric row** — `Connection` · `System` · `Model` (equal-height cards).
+2. **Host | Playground** — the Host details card (§6.12 #52) beside the Playground conversation window (§9.4).
+3. **Inference streams** — full-width, placed immediately above the log.
+4. **Realtime events** — the full-width log window (§6.12 #53) at the bottom.
+
+Each card is tinted with its own accent (top border + card title). All cards fill their grid
+tracks and collapse to a single column on narrow screens, where the sidebar becomes a compact
+icon rail.
 
 ## 10. Model Lifecycle & Data Management
 
@@ -848,9 +890,12 @@ Streaming (`"stream": true`) must also be tested.
 
 ### Control Center
 
-- The streams table shows bounded inference-request rows (time, id, status, token counts, tok/s, duration) fed by `GET /api/requests` and live `request.*` WebSocket events.
+- The streams table shows bounded inference-request rows (time, id, status, token counts, tok/s, duration) fed by `GET /api/requests` and live `request.*` WebSocket events; error rows drill down into the reason on click.
 - The Playground streams a multi-turn conversation through `/v1/chat/completions` and renders the reply incrementally.
 - The Viridis theme toggle switches and persists; JetBrains Mono Nerd Font is used when the client has it, with web fallback.
+- The System card shows live CPU %, Memory %, temperature, disk, token rate, and API calls/min; the Host card shows the fastfetch-style instance details.
+- The Realtime events card renders a tagged, auto-scrolling log with a Clear button.
+- The sidebar scrollspy highlights the active section; the bottom status bar updates live (chips, CPU % / memory % / tok/s / API per min) with a ticking clock.
 - No UI text overlaps: labels and values stay on separate flex rows/wrapped lines, and no raw JSON blobs render in status rows.
 - Request records never contain prompt or response content.
 

@@ -57,6 +57,26 @@ PRD §6.12 / §9.4–9.7:
   attributed to the in-flight request; response `usage` wins when both exist). This keeps
   telemetry numeric-only and streaming unbuffered.
 
+## Addendum — metrics card, log, host card, modern shell (2026-09-05)
+
+- **System metrics table + API calls/min.** The control center gained a System card
+  (CPU % / memory % on the Viridis load ramp, temperature, disk, token rate) plus a rolling
+  **API calls/min** metric (start requests in the last 60s), exposed as `requestsPerMinute`
+  on `/api/system`, `/api/metrics`, and `system.metrics` WS events.
+- **Log window + error drill-down.** Events render as a tagged, auto-scrolling log (300-line
+  cap, Clear button); error statuses in the streams table are clickable and expand the reason.
+- **Host card via container-visible host info.** Fastfetch-style Host card backed by a new
+  `GET /api/system/host` endpoint. Decided deliberately: because the UI reads through the
+  gateway container, OS and hostname reflect the container image, while CPU model/cores,
+  kernel, uptime, total memory, hardware model, and local IPv4 come from the host's `/proc`
+  (real Pi data). No host-path mounts into the container were added for this.
+- **Modern "alive" shell.** Per the user (referencing the nvim/snacks-dashboard aesthetic):
+  a fixed left sidebar with scrollspy section links (collapses to a rail on narrow screens),
+  a fixed bottom status bar (gateway/llama/model chips, CPU %, mem %, tok/s, API/min, 1-second
+  clock, theme toggle), per-card accent colors (Connection/System/Model/Host/Playground/
+  Streams/Events), and subtle glow/hover/pulse polish. Single-file vanilla UI preserved; the
+  Dark/Viridis toggle is kept.
+
 ## Relates to
 
 - `2026-09-05--json-parser-scoped-to-api.md` — why `/v1` must not be body-parsed, hence

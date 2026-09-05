@@ -143,15 +143,30 @@ download progress, restart/update), and live realtime events over `/ws`.
 
 ### Control Center v2
 
-- **No-overlap layout.** Flex rows get `gap`/`wrap`/`min-width:0` + `overflow-wrap:anywhere`;
-  raw status `JSON.stringify` blobs become discrete chips; header/cards wrap on narrow widths.
+- **Metric row.** `Connection` · `System` · `Model` as equal-height cards. The System card
+  tabulates CPU %, Memory % (Viridis load-colored), temperature, disk, token rate, and rolling
+  **API calls/min**, fed by `/api/system` + live `system.metrics` WS events.
 - **Inference streams table.** A bounded table of `/v1/*` requests — time, request id,
   status, tokens (prompt/completion/total), tok/s, duration — backfilled from
   `GET /api/requests` and updated live via `request.started`/`request.completed`/`request.error`
-  WebSocket events. The `tok/s` cell is tinted on a Viridis ramp (slow → fast).
+  WebSocket events. The `tok/s` cell is tinted on a Viridis ramp (slow → fast); error statuses
+  are clickable and expand the error reason.
+- **Host card (fastfetch-style).** OS, hostname, kernel, arch, Pi hardware model, CPU model +
+  cores, total memory, uptime, local IP from `GET /api/system/host` — the container-visible
+  host details (real Pi CPU/kernel/uptime/memory; OS reflects the container image).
 - **Playground.** A multi-turn chat conversation window that streams through the same
   `/v1/chat/completions` path as OpenCode (uses the inference key; Send + Stop); every
   exchange shows up in the streams table.
+- **Realtime events log.** Tagged, color-coded, auto-scrolling log capped at 300 lines with a
+  **Clear** button.
+- **Layout.** The page is a shell — a fixed left sidebar (brand + section links with
+  per-card accent markers, scrollspy active highlight, collapsing to a compact rail on narrow
+  screens) and a fixed bottom status bar (live gateway/llama/model chips, CPU%, memory%,
+  token rate, API/min, ticking clock, theme toggle). On wide screens the cards form a grid —
+  metric row, then `Host | Playground`, then the streams table directly above the full-width
+  log window; one column on narrow screens. Each card carries its own accent color
+  (Connection, System, Model, Host, Playground, Streams, Events) on a top border and title,
+  with a subtle glow/hover/pulse treatment.
 - **Theme toggle.** Dark (default) and a subtle Viridis-tinted variant, persisted in
   `localStorage`.
 - **Typography.** The monospace face is `JetBrainsMono Nerd Font`, then `JetBrains Mono`
@@ -159,14 +174,15 @@ download progress, restart/update), and live realtime events over `/ws`.
 
 Implemented backend support: a bounded request ring in the gateway — numeric telemetry only,
 never prompt/response content (preserves the no-logging rule) — exposed via
-`GET /api/requests` and the `request.*` WebSocket events (PRD §6.12, §9.4–9.7). Token
-counts come from response `usage` when present (non-stream JSON) and from llama-server's
-own `slot print_timing` accounting for streams (llama's streaming chunks carry no
-`usage`); unknown counts display as `—`.
+`GET /api/requests` and the `request.*` WebSocket events, plus `GET /api/system/host` and a
+rolling `requestsPerMinute` on `/api/system` / `/api/metrics` / `system.metrics` (PRD §6.12,
+§9.4–9.8). Token counts come from response `usage` when present (non-stream JSON) and from
+llama-server's own `slot print_timing` accounting for streams (llama's streaming chunks carry
+no `usage`); unknown counts display as `—`.
 
 ## Documentation
 
-- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–50), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
+- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–55), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
 
 ## Status
 
