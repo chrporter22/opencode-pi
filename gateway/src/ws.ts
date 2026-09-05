@@ -4,6 +4,7 @@ import type { AuthContext } from "./auth.js";
 import { isAdminKey } from "./auth.js";
 import type { Logger } from "./logger.js";
 import type { Metrics } from "./metrics.js";
+import type { RequestRecord, RequestTracker } from "./requests.js";
 import type { RuntimeEvent, RuntimeState } from "./state.js";
 
 export interface WsServerOptions {
@@ -12,6 +13,7 @@ export interface WsServerOptions {
   state: RuntimeState;
   metrics: Metrics;
   logger: Logger;
+  requests: RequestTracker;
 }
 
 export interface WsServer {
@@ -76,14 +78,39 @@ export function startWsServer(opts: WsServerOptions): WsServer {
     });
   };
 
+  const onRequest = (record: RequestRecord): void => {
+    broadcast({
+      type:
+        record.status === "started"
+          ? "request.started"
+          : record.status === "completed"
+            ? "request.completed"
+            : "request.error",
+      timestamp: record.startedAt,
+      id: record.id,
+      method: record.method,
+      path: record.path,
+      model: record.model,
+      status: record.status,
+      durationMs: record.durationMs,
+      promptTokens: record.promptTokens,
+      completionTokens: record.completionTokens,
+      totalTokens: record.totalTokens,
+      tokensPerSecond: record.tokensPerSecond,
+      error: record.error,
+    });
+  };
+
   opts.state.on("change", onStateChange);
   opts.logger.subscribe(onLog);
   opts.metrics.subscribeSample(onMetrics);
+  const unsubscribeRequests = opts.requests.subscribe(onRequest);
 
   return {
     broadcast,
     close() {
       opts.state.off("change", onStateChange);
+      unsubscribeRequests();
       for (const client of clients) client.terminate();
       clients.clear();
       wss.close();

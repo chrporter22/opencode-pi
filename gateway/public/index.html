@@ -4,20 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>opencode-pi — Control Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #1e1e1e; --fg: #cccccc; --dim: #9d9d9d; --faint: #6e6e6e;
     --accent: #569cd6; --ok: #28c840; --err: #f48771; --border: #3c3c3c;
-    --card: #252526; --input: #3c3c3c;
+    --card: #252526; --input: #3c3c3c; --chip-bg: #333333;
+    --progress-inner: var(--accent);
+    --viridis-0: #440154; --viridis-1: #3b528b; --viridis-2: #21918c;
+    --viridis-3: #5ec962; --viridis-4: #fde725;
+    --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "SF Mono", Monaco, Consolas, monospace;
+  }
+  body[data-theme="viridis"] {
+    --card: #1f2629; --border: #2e4147; --input: #26343a; --chip-bg: #2c3a40;
+    --accent: #5ec962; --ok: #5ec962; --err: #f2a05a;
+    --progress-inner: linear-gradient(90deg, var(--viridis-0), var(--viridis-2), var(--viridis-4));
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
     background: var(--bg); color: var(--fg); font-size: 14px; min-height: 100vh;
-    padding: 24px;
+    padding: 24px; color-scheme: dark;
   }
-  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
   header h1 { font-size: 18px; font-weight: 600; }
+  header .spacer { flex: 1; min-width: 12px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); display: inline-block; }
   .dot.ok { background: var(--ok); }
   .dot.err { background: var(--err); }
@@ -25,24 +38,52 @@
     background: var(--card); border: 1px solid var(--border); border-radius: 8px;
     padding: 16px; max-width: 640px; margin-bottom: 16px;
   }
+  .card.wide { max-width: 860px; }
   .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); margin-bottom: 12px; }
-  .row { display: flex; justify-content: space-between; padding: 4px 0; }
-  .row .k { color: var(--dim); }
+  .row {
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline;
+    justify-content: space-between; padding: 4px 0; min-width: 0;
+  }
+  .row .k { color: var(--dim); flex-shrink: 0; }
+  .row > :last-child { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+  .row.actions { justify-content: flex-start; }
   input {
     background: var(--input); color: var(--fg); border: 1px solid var(--border);
-    border-radius: 6px; padding: 8px 10px; font-size: 13px; width: 100%;
+    border-radius: 6px; padding: 8px 10px; font-size: 13px; width: 100%; margin-bottom: 8px;
   }
   button {
     background: var(--accent); color: #1e1e1e; border: none; border-radius: 6px;
-    padding: 8px 14px; font-size: 13px; cursor: pointer; margin-right: 8px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; margin-right: 8px; white-space: nowrap;
   }
   button:disabled { opacity: .5; cursor: default; }
-  .progress { height: 8px; background: var(--input); border-radius: 4px; margin: 10px 0; overflow: hidden; }
-  .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
-  pre {
-    font-family: "SF Mono", Monaco, Consolas, monospace; font-size: 12px;
-    color: var(--dim); white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+  .chip {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    background: var(--chip-bg); font-size: 12px; white-space: nowrap;
   }
+  .chip.ok { color: var(--ok); }
+  .chip.err { color: var(--err); }
+  .chip.warn { color: var(--viridis-4); }
+  .progress { height: 8px; background: var(--input); border-radius: 4px; margin: 10px 0; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--progress-inner); width: 0; transition: width .3s; }
+  pre {
+    font-family: var(--mono); font-size: 12px; color: var(--dim);
+    white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+  }
+  table.streams { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  table.streams th, table.streams td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.streams th { color: var(--dim); font-weight: 500; }
+  table.streams td.num { font-variant-numeric: tabular-nums; }
+  table.streams td.dim { color: var(--faint); }
+  .t1 { color: var(--viridis-1); } .t2 { color: var(--viridis-2); }
+  .t3 { color: var(--viridis-3); } .t4 { color: var(--viridis-4); }
+  .conv { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+  .msg {
+    max-width: 80%; padding: 8px 12px; border-radius: 10px;
+    white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.45;
+  }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #1e1e1e; border-bottom-right-radius: 2px; }
+  .msg.assistant { align-self: flex-start; background: var(--input); border-bottom-left-radius: 2px; }
+  .msg.hint { color: var(--faint); background: transparent; border: 1px dashed var(--border); }
 </style>
 </head>
 <body>
@@ -50,18 +91,23 @@
     <span class="dot" id="statusDot"></span>
     <h1>opencode-pi</h1>
     <span style="color:var(--faint);font-size:13px">Control center</span>
+    <span class="spacer"></span>
+    <button id="btnTheme">Theme: Dark</button>
   </header>
 
   <div class="card">
     <h2>Connection</h2>
     <input type="password" id="key" placeholder="Admin API key" autocomplete="off">
+    <input type="password" id="iKey" placeholder="Inference API key (playground)" autocomplete="off">
   </div>
 
   <div class="card">
     <h2>Model</h2>
     <div class="row"><span class="k">name</span><span id="mName">—</span></div>
     <div class="row"><span class="k">quantization</span><span id="mQuant">—</span></div>
-    <div class="row"><span class="k">status</span><span id="mStatus">—</span></div>
+    <div class="row"><span class="k">gateway</span><span id="mGw" class="chip">—</span></div>
+    <div class="row"><span class="k">llama</span><span id="mLl" class="chip">—</span></div>
+    <div class="row"><span class="k">model loaded</span><span id="mLoaded" class="chip">—</span></div>
     <div class="row"><span class="k">installed</span><span id="mInstalled">—</span></div>
     <div class="row"><span class="k">size</span><span id="mSize">—</span></div>
     <div class="row"><span class="k">installed at</span><span id="mAt">—</span></div>
@@ -73,6 +119,29 @@
     <button id="btnUpdate">Update model</button>
   </div>
 
+  <div class="card wide">
+    <h2>Inference streams <span id="streamCount" class="chip" style="margin-left:6px">0 active</span></h2>
+    <table class="streams">
+      <thead>
+        <tr><th>Time</th><th>Request</th><th>Status</th><th>Tokens P/C/T</th><th>tok/s</th><th>Duration</th></tr>
+      </thead>
+      <tbody id="streamRows"></tbody>
+    </table>
+    <div id="streamEmpty" style="color:var(--faint);font-size:13px;padding:8px 0">No inference requests yet.</div>
+  </div>
+
+  <div class="card wide">
+    <h2>Playground</h2>
+    <div class="conv" id="convo">
+      <div class="msg assistant hint" id="convHint">Send a message to start a conversation through /v1/chat/completions.</div>
+    </div>
+    <input id="chatInput" placeholder="Message the model…" autocomplete="off">
+    <div class="row actions" style="padding-top:4px">
+      <button id="btnSend">Send</button>
+      <button id="btnStop" disabled>Stop</button>
+    </div>
+  </div>
+
   <div class="card">
     <h2>Realtime events</h2>
     <pre id="events"></pre>
@@ -81,6 +150,7 @@
 <script>
   const dot = document.getElementById("statusDot");
   const keyInput = document.getElementById("key");
+  const iKeyInput = document.getElementById("iKey");
   const q = (id) => document.getElementById(id);
   const $s = (id, v) => (q(id).textContent = v);
 
@@ -95,16 +165,44 @@
     if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(0) + " MB";
     return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
   }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+      { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+    ));
+  }
+
+  function applyTheme() {
+    const t = localStorage.getItem("piTheme") === "viridis" ? "viridis" : "dark";
+    document.body.dataset.theme = t;
+    q("btnTheme").textContent = t === "viridis" ? "Theme: Viridis" : "Theme: Dark";
+  }
+  q("btnTheme").addEventListener("click", () => {
+    localStorage.setItem("piTheme", document.body.dataset.theme === "viridis" ? "dark" : "viridis");
+    applyTheme();
+  });
+
+  function chip(id, state) {
+    const el = q(id);
+    el.textContent = state == null || state === "" ? "—" : String(state);
+    el.className = "chip";
+    const ok = ["ready", "online", "loaded", "true", "ok", "200"];
+    const err = ["error", "stopping", "offline", "false", "failed"];
+    const v = String(state);
+    if (ok.includes(v)) el.classList.add("ok");
+    else if (err.includes(v)) el.classList.add("err");
+    else if (v !== "—") el.classList.add("warn");
+  }
 
   async function refresh() {
     try {
-      const h = await (await fetch("/health")).json();
+      await fetch("/health");
       dot.className = "dot ok";
       const hdrs = headers();
       if (hdrs) {
-        const s = await fetch("/api/status", { headers: hdrs });
-        const st = await s.json();
-        $s("mStatus", JSON.stringify({ gateway: st.gateway, llama: st.llama, model: st.model, loaded: st.modelLoaded }));
+        const s = await (await fetch("/api/status", { headers: hdrs })).json();
+        chip("mGw", s.gateway);
+        chip("mLl", s.llama);
+        chip("mLoaded", s.modelLoaded ? "loaded" : "false");
         const m = await (await fetch("/api/model", { headers: hdrs })).json();
         $s("mName", m.name);
         $s("mQuant", m.quantization ?? "—");
@@ -118,12 +216,10 @@
         }
         const sys = await (await fetch("/api/system", { headers: hdrs })).json();
         $s("mTps", sys.tokensPerSecond != null ? sys.tokensPerSecond.toFixed(1) : "—");
-      } else {
-        $s("mStatus", "enter admin key");
+        try { await loadRequests(); } catch {}
       }
     } catch (e) {
       dot.className = "dot err";
-      $s("mStatus", "health: " + e.message);
     }
   }
 
@@ -157,6 +253,148 @@
     }
   }
 
+  const reqs = new Map();
+  function tpsRank(v) {
+    if (v == null) return "";
+    if (v < 1) return "t1";
+    if (v < 2) return "t2";
+    if (v < 4) return "t3";
+    return "t4";
+  }
+  function shortId(id) { return id ? id.slice(0, 8) : "—"; }
+  function fmtToks(r) {
+    return [r.promptTokens ?? "—", r.completionTokens ?? "—", r.totalTokens ?? "—"].join("/");
+  }
+  function fmtDur(ms) { return ms == null ? "—" : ms + " ms"; }
+  function upsertRecord(rec) { reqs.set(rec.id, rec); }
+  function renderStreams() {
+    const rows = [...reqs.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
+    q("streamEmpty").style.display = rows.length ? "none" : "block";
+    const active = [...reqs.values()].filter((r) => r.status === "started").length;
+    q("streamCount").textContent = active > 0 ? active + " active" : "0 active";
+    const tbody = q("streamRows");
+    tbody.textContent = "";
+    for (const r of rows) {
+      const stCls = r.status === "completed" ? "chip ok" : r.status === "error" ? "chip err" : "chip warn";
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        "<td>" + new Date(r.startedAt).toLocaleTimeString() + "</td>" +
+        '<td title="' + escapeHtml(r.id) + (r.path ? " · " + escapeHtml(r.path) : "") + '">' + shortId(r.id) + "</td>" +
+        '<td><span class="' + stCls + '">' + escapeHtml(r.status) + "</span></td>" +
+        '<td class="num' + (r.totalTokens == null ? " dim" : "") + '">' + fmtToks(r) + "</td>" +
+        '<td class="num' + (r.tokensPerSecond == null ? " dim" : " " + tpsRank(r.tokensPerSecond)) + '">' +
+          (r.tokensPerSecond != null ? r.tokensPerSecond.toFixed(1) : "—") + "</td>" +
+        '<td class="num">' + fmtDur(r.durationMs) + "</td>";
+      tbody.appendChild(tr);
+    }
+  }
+  async function loadRequests() {
+    const hdrs = headers();
+    if (!hdrs) return;
+    const r = await fetch("/api/requests", { headers: hdrs });
+    if (!r.ok) return;
+    const body = await r.json();
+    for (const rec of body.entries || []) upsertRecord(rec);
+    renderStreams();
+  }
+  function handleRequestEvent(obj) {
+    if (obj.type !== "request.started" && obj.type !== "request.completed" && obj.type !== "request.error") return;
+    upsertRecord({
+      id: obj.id,
+      method: obj.method,
+      path: obj.path,
+      model: obj.model,
+      status: obj.status,
+      startedAt: obj.timestamp || Date.now(),
+      durationMs: obj.durationMs,
+      promptTokens: obj.promptTokens,
+      completionTokens: obj.completionTokens,
+      totalTokens: obj.totalTokens,
+      tokensPerSecond: obj.tokensPerSecond,
+      error: obj.error,
+    });
+    renderStreams();
+  }
+
+  const convo = [];
+  let chatAbort = null;
+  function addBubble(role, text) {
+    const hint = q("convHint");
+    if (hint) hint.remove();
+    const d = document.createElement("div");
+    d.className = "msg " + (role === "user" ? "user" : "assistant");
+    d.textContent = text;
+    q("convo").appendChild(d);
+    q("convo").scrollTop = q("convo").scrollHeight;
+    return d;
+  }
+  async function sendMsg() {
+    const iKey = iKeyInput.value || localStorage.getItem("inferenceKey");
+    if (!iKey) { alert("Enter the inference API key to use the playground."); return; }
+    const input = q("chatInput");
+    const text = input.value.trim();
+    if (!text) return;
+    convo.push({ role: "user", content: text });
+    addBubble("user", text);
+    input.value = "";
+    const out = addBubble("assistant", "");
+    q("btnSend").disabled = true;
+    q("btnStop").disabled = false;
+    chatAbort = new AbortController();
+    let full = "";
+    try {
+      const r = await fetch("/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", "authorization": "Bearer " + iKey },
+        body: JSON.stringify({ model: "Qwen3-1.7B", stream: true, messages: convo }),
+        signal: chatAbort.signal,
+      });
+      if (!r.ok || !r.body) throw new Error("HTTP " + (r.status || 0));
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const j = JSON.parse(data);
+            const delta = (j.choices && j.choices[0] && j.choices[0].delta) || {};
+            const piece = delta.content ?? delta.reasoning_content ?? "";
+            if (piece) {
+              full += piece;
+              out.textContent = full;
+              q("convo").scrollTop = q("convo").scrollHeight;
+            }
+          } catch {}
+        }
+      }
+      if (full) convo.push({ role: "assistant", content: full });
+    } catch (e) {
+      if (e.name !== "AbortError") {
+        out.textContent = "error: " + e.message;
+      } else {
+        out.textContent = out.textContent || "stopped";
+      }
+    } finally {
+      q("btnSend").disabled = false;
+      q("btnStop").disabled = true;
+      chatAbort = null;
+    }
+  }
+  q("btnSend").addEventListener("click", sendMsg);
+  q("btnStop").addEventListener("click", () => { if (chatAbort) chatAbort.abort(); });
+  q("chatInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+  });
+
   function connectWs(key) {
     if (!key) return;
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?key=${encodeURIComponent(key)}`);
@@ -168,6 +406,7 @@
         if (obj.message) parseLogLine(obj.message);
         if (obj.type === "model.status") refresh();
         if (obj.type === "llama.status" || obj.type === "gateway.status") refresh();
+        handleRequestEvent(obj);
       } catch {}
     };
     ws.onerror = () => { dot.className = "dot err"; };
@@ -179,9 +418,16 @@
     refresh();
     connectWs(keyInput.value);
   });
+  iKeyInput.addEventListener("change", () => {
+    localStorage.setItem("inferenceKey", iKeyInput.value);
+  });
 
+  keyInput.value = localStorage.getItem("adminKey") || "";
+  iKeyInput.value = localStorage.getItem("inferenceKey") || "";
+  applyTheme();
   setInterval(refresh, 5000);
   refresh();
+  if (keyInput.value) connectWs(keyInput.value);
 </script>
 </body>
 </html>

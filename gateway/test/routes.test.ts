@@ -4,6 +4,7 @@ import request from "supertest";
 import { parseConfig } from "../src/config.js";
 import { createLogger, type Logger } from "../src/logger.js";
 import type { Metrics } from "../src/metrics.js";
+import { createRequestTracker } from "../src/requests.js";
 import { RuntimeState } from "../src/state.js";
 import { controlRouter } from "../src/routes/control.js";
 import { opsRouter } from "../src/routes/ops.js";
@@ -38,7 +39,8 @@ function fixtures() {
     restart: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
   };
-  return { config, logger, state, metrics, llama };
+  const requests = createRequestTracker();
+  return { config, logger, state, metrics, llama, requests };
 }
 
 function buildApp(deps: ReturnType<typeof fixtures>, onRestartRequest = () => {}) {
@@ -95,6 +97,23 @@ describe("control routes", () => {
     expect(res.status).toBe(200);
     expect(res.body.entries.length).toBeGreaterThanOrEqual(1);
     expect(res.body.entries[0].msg).toBe("hello");
+  });
+
+  it("GET /api/requests returns the request ring", async () => {
+    const deps = fixtures();
+    deps.requests.start({ id: "abc", method: "POST", path: "/chat/completions", model: "Qwen3-1.7B" });
+    deps.requests.complete("abc", { promptTokens: 3, completionTokens: 9, totalTokens: 12 });
+    const app = buildApp(deps);
+    const res = await request(app).get("/api/requests");
+    expect(res.status).toBe(200);
+    expect(res.body.entries.length).toBe(1);
+    expect(res.body.entries[0]).toMatchObject({
+      id: "abc",
+      status: "completed",
+      promptTokens: 3,
+      completionTokens: 9,
+      totalTokens: 12,
+    });
   });
 });
 

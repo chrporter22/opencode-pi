@@ -77,10 +77,44 @@ export interface LlamaSupervisorOptions {
   logger: Logger;
 }
 
+export interface LlamaTaskTiming {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export function createTaskTimingParser(onComplete: (t: LlamaTaskTiming) => void): (line: string) => void {
+  const tasks = new Map<number, Partial<LlamaTaskTiming>>();
+  return (line) => {
+    const taskMatch = /task\s+(\d+)/.exec(line);
+    if (!taskMatch) return;
+    const id = Number(taskMatch[1]);
+    let acc = tasks.get(id);
+    if (!acc) {
+      acc = {};
+      tasks.set(id, acc);
+    }
+    const prompt = /prompt eval time =\s+[\d.]+ ms \/\s+(\d+) tokens/.exec(line);
+    const evalTime = /^\s*eval time =\s+[\d.]+ ms \/\s+(\d+) tokens/.exec(line);
+    const total = /total time =\s+[\d.]+ ms \/\s+(\d+) tokens/.exec(line);
+    if (prompt) acc.promptTokens = Number(prompt[1]);
+    if (evalTime) acc.completionTokens = Number(evalTime[1]);
+    if (total && acc.completionTokens != null) {
+      tasks.delete(id);
+      onComplete({
+        promptTokens: acc.promptTokens ?? 0,
+        completionTokens: acc.completionTokens,
+        totalTokens: total ? Number(total[1]) : acc.completionTokens,
+      });
+    }
+  };
+}
+
 export interface LlamaSupervisor {
   start(): void;
   restart(): Promise<void>;
   stop(): Promise<void>;
+  subscribeTaskTiming(cb: (t: LlamaTaskTiming) => void): () => void;
 }
 
 export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSupervisor {
@@ -88,6 +122,11 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
   let child: ChildProcess | null = null;
   let stopping = false;
   let consecutiveFailures = 0;
+
+  const timingSubscribers = new Set<(t: LlamaTaskTiming) => void>();
+  function emitTiming(t: LlamaTaskTiming): void {
+    for (const cb of timingSubscribers) cb(t);
+  }
 
   function terminate(prev: ChildProcess): Promise<void> {
     return new Promise((resolve) => {
@@ -115,6 +154,7 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
 
     const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
     child = proc;
+    const parseTiming = createTaskTimingParser(emitTiming);
 
     proc.stdout?.on("data", (d: Buffer) => {
       for (const line of d.toString().split("\n")) {
@@ -125,6 +165,7 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
       for (const line of d.toString().split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) continue;
+        parseTiming(trimmed);
         const tps = /(\d+(?:\.\d+)?)\s+tokens\s+per\s+second/i.exec(trimmed);
         if (tps) state.setTokensPerSecond(Number(tps[1]));
         logger.warn(`[llama] ${trimmed}`);
@@ -181,6 +222,12 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
       const prev = child;
       if (prev) await terminate(prev);
       state.setLlama("stopped");
+    },
+    subscribeTaskTiming(cb) {
+      timingSubscribers.add(cb);
+      return () => {
+        timingSubscribers.delete(cb);
+      };
     },
   };
 }

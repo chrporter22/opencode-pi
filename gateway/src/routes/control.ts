@@ -4,6 +4,7 @@ import type { Logger } from "../logger.js";
 import type { Metrics } from "../metrics.js";
 import type { RuntimeState } from "../state.js";
 import type { LlamaSupervisor } from "../modules/llama/supervisor.js";
+import type { RequestTracker } from "../requests.js";
 import { readMetadata } from "../model/model-store.js";
 import { updateModelAction } from "../model/actions/update-model.action.js";
 
@@ -13,6 +14,7 @@ export interface ControlDeps {
   metrics: Metrics;
   logger: Logger;
   llama: LlamaSupervisor;
+  requests: RequestTracker;
 }
 
 async function modelMetadata(deps: ControlDeps) {
@@ -94,6 +96,10 @@ export function controlRouter(deps: ControlDeps): Router {
 
   router.get("/logs", (_req, res) => {
     res.json({ entries: deps.logger.snapshot() });
+  });
+
+  router.get("/requests", (_req, res) => {
+    res.json({ entries: deps.requests.snapshot() });
   });
 
   let modelUpdateInFlight = false;

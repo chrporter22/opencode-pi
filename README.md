@@ -228,24 +228,27 @@ Create `~/.config/opencode/opencode.json` (on the Arch laptop):
 
 ```jsonc
 {
-  "$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "opencode-pi": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "opencode-pi (LAN)",
-      "options": {
-        "baseURL": "http://<pi-ip>:8080/v1",
-        "apiKey": "<INFERENCE_API_KEY>"
-      },
-      "models": {
-        "Qwen3-1.7B": {
-          "name": "Qwen3-1.7B Q8_0",
-          "limit": { "context": 8192 }
-        }
-      }
-    }
-  },
-  "model": "opencode-pi/Qwen3-1.7B"
+"$schema": "https://opencode.ai/config.json",
+"provider": {
+"opencode-pi": {
+"npm": "@ai-sdk/openai-compatible",
+"name": "opencode-pi (LAN)",
+"options": {
+"baseURL": "http://<pi-ip>:8080/v1",
+"apiKey": "<INFERENCE_API_KEY>"
+},
+"models": {
+"Qwen3-1.7B": {
+"name": "Qwen3-1.7B Q8_0",
+"limit": {
+"context": 8192,
+"output": 2048
+}
+}
+}
+}
+},
+"model": "opencode-pi/Qwen3-1.7B"
 }
 ```
 

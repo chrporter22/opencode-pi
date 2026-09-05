@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLogger } from "../src/logger.js";
-import { buildLlamaArgs, waitForHealth } from "../src/modules/llama/supervisor.js";
+import { buildLlamaArgs, createTaskTimingParser, waitForHealth } from "../src/modules/llama/supervisor.js";
 import { makeConfig } from "./helpers.js";
 
 describe("buildLlamaArgs", () => {
@@ -51,6 +51,19 @@ function startHealthServer(healthy: () => boolean): { url: string; setHealthy: (
 
 afterEach(async () => {
   while (servers.length) await new Promise<void>((r) => servers.pop()?.close(() => r()));
+});
+
+describe("createTaskTimingParser", () => {
+  it("reads token counts from the per-task print_timing summary lines", () => {
+    const emitted: Array<{ promptTokens: number; completionTokens: number; totalTokens: number }> = [];
+    const parse = createTaskTimingParser((t) => emitted.push(t));
+    parse("7.18.978.098 I slot print_timing: id  2 | task 456 | prompt eval time =     397.86 ms /     1 tokens (  397.86 ms per token,     2.51 tokens per second)");
+    expect(emitted).toHaveLength(0);
+    parse("7.18.978.138 I slot print_timing: id  2 | task 456 |        eval time =    2669.80 ms /     8 tokens (  333.73 ms per token,     3.00 tokens per second)");
+    expect(emitted).toHaveLength(0);
+    parse("7.18.978.148 I slot print_timing: id  2 | task 456 |       total time =    3067.66 ms /     9 tokens");
+    expect(emitted).toEqual([{ promptTokens: 1, completionTokens: 8, totalTokens: 9 }]);
+  });
 });
 
 describe("waitForHealth", () => {

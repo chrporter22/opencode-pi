@@ -6,6 +6,7 @@ import { createAuth, requireAuth } from "./auth.js";
 import { createLogger, logger } from "./logger.js";
 import { RuntimeState } from "./state.js";
 import { createMetrics } from "./metrics.js";
+import { createRequestTracker } from "./requests.js";
 import { startWsServer } from "./ws.js";
 import { healthRouter } from "./routes/health.js";
 import { controlRouter } from "./routes/control.js";
@@ -26,6 +27,9 @@ const metrics = createMetrics({
   intervalMs: 5000,
 });
 
+const requests = createRequestTracker();
+llamaSupervisor.subscribeTaskTiming((t) => requests.applyTaskTiming(t));
+
 const app = express();
 app.disable("x-powered-by");
 
@@ -35,19 +39,19 @@ app.use(
   "/api",
   requireAuth(auth, "admin"),
   express.json({ limit: "1mb" }),
-  controlRouter({ config, state, metrics, logger: log, llama: llamaSupervisor }),
+  controlRouter({ config, state, metrics, logger: log, llama: llamaSupervisor, requests }),
   opsRouter({
     logger: log,
     onRestartRequest: () => shutdown("restart-request"),
   })
 );
 
-app.use("/v1", requireAuth(auth, "inference"), v1Router({ config, state, logger: log }));
+app.use("/v1", requireAuth(auth, "inference"), v1Router({ config, state, logger: log, requests }));
 
 app.use(express.static(path.resolve("public")));
 
 const httpServer = createServer(app);
-const wsServer = startWsServer({ httpServer, auth, state, metrics, logger: log });
+const wsServer = startWsServer({ httpServer, auth, state, metrics, logger: log, requests });
 
 let shuttingDown = false;
 let bootstrapDone = false;

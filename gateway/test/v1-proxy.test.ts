@@ -5,6 +5,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RuntimeState } from "../src/state.js";
 import { createLogger } from "../src/logger.js";
+import { createRequestTracker } from "../src/requests.js";
 import { v1Router } from "../src/routes/v1.js";
 import { makeConfig } from "./helpers.js";
 
@@ -40,7 +41,7 @@ describe("v1 proxy", () => {
     const state = new RuntimeState();
     state.setLlama("starting");
     const app = express();
-    app.use("/v1", v1Router({ config: makeConfig({ llama: { ...makeConfig().llama, url: upstreamUrl } }), state, logger: createLogger({ stdout: false }) }));
+    app.use("/v1", v1Router({ config: makeConfig({ llama: { ...makeConfig().llama, url: upstreamUrl } }), state, logger: createLogger({ stdout: false }), requests: createRequestTracker() }));
 
     const res = await request(app).post("/v1/chat/completions").send({});
     expect(res.status).toBe(503);
@@ -53,7 +54,7 @@ describe("v1 proxy", () => {
     seenAuth = "UNSET";
     state.setModelLoaded(true);
     const app = express();
-    app.use("/v1", v1Router({ config: makeConfig({ llama: { ...makeConfig().llama, url: upstreamUrl } }), state, logger: createLogger({ stdout: false }) }));
+    app.use("/v1", v1Router({ config: makeConfig({ llama: { ...makeConfig().llama, url: upstreamUrl } }), state, logger: createLogger({ stdout: false }), requests: createRequestTracker() }));
 
     const res = await request(app)
       .post("/v1/chat/completions")
