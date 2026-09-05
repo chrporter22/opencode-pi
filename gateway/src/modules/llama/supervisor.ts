@@ -95,7 +95,7 @@ export function createTaskTimingParser(onComplete: (t: LlamaTaskTiming) => void)
       tasks.set(id, acc);
     }
     const prompt = /prompt eval time =\s+[\d.]+ ms \/\s+(\d+) tokens/.exec(line);
-    const evalTime = /^\s*eval time =\s+[\d.]+ ms \/\s+(\d+) tokens/.exec(line);
+    const evalTime = /(?<!prompt )eval time =\s+[\d.]+ ms \/\s+(\d+) tokens/.exec(line);
     const total = /total time =\s+[\d.]+ ms \/\s+(\d+) tokens/.exec(line);
     if (prompt) acc.promptTokens = Number(prompt[1]);
     if (evalTime) acc.completionTokens = Number(evalTime[1]);

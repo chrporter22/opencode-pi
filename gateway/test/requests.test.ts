@@ -160,12 +160,13 @@ describe("request tracking via the v1 proxy", () => {
     expect(started?.id).toBe(completed?.id);
   });
 
-  it("merges llama task timings when the response carries no usage", () => {
+  it("merges llama task timings when the response carries no usage", async () => {
     const tracker = createRequestTracker();
     const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen3-1.7B" };
     tracker.start(ctx);
     const id = tracker.snapshot()[0].id;
     tracker.applyTaskTiming({ promptTokens: 1, completionTokens: 8, totalTokens: 9 });
+    await new Promise((r) => setTimeout(r, 15));
     tracker.complete(id, { promptTokens: null, completionTokens: null, totalTokens: null });
 
     const rec = tracker.snapshot()[0];
@@ -189,7 +190,23 @@ describe("request tracking via the v1 proxy", () => {
     expect(rec.completionTokens).toBe(20);
     expect(rec.totalTokens).toBe(25);
   });
-});
+
+  it("back-fills tokens into a completed record when timing arrives after completion", async () => {
+    const tracker = createRequestTracker();
+    const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen3-1.7B" };
+    tracker.start(ctx);
+    const id = tracker.snapshot()[0].id;
+    await new Promise((r) => setTimeout(r, 15));
+    tracker.complete(id, { promptTokens: null, completionTokens: null, totalTokens: null });
+    tracker.applyTaskTiming({ promptTokens: 16, completionTokens: 8, totalTokens: 24 });
+
+    const rec = tracker.snapshot()[0];
+    expect(rec.status).toBe("completed");
+    expect(rec.promptTokens).toBe(16);
+    expect(rec.completionTokens).toBe(8);
+    expect(rec.totalTokens).toBe(24);
+    expect(rec.tokensPerSecond).toBeCloseTo(8 / ((rec.durationMs ?? 1) / 1000), 5);
+  });
 
   it("records a client disconnect as an error record", async () => {
     const state = new RuntimeState();

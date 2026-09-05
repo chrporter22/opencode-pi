@@ -48,6 +48,15 @@ PRD §6.12 / §9.4–9.7:
 - At `LLAMA_PARALLEL=1` only one inference can be in flight; the Playground keeps a single
   conversation window this iteration and surfaces llama's busy/503 behavior otherwise.
 
+## Addendum — streaming token source (2026-09-05)
+
+- Live verification showed llama-server b9500 does **not** emit a `usage` field in streaming
+  chunks, so "the final SSE chunk before `[DONE]`" does not exist for streams on this build.
+- Decision: token counts come from **response `usage` when present (non-stream JSON) and from
+  llama-server's own stderr `slot print_timing` accounting for streams** (numeric counts only,
+  attributed to the in-flight request; response `usage` wins when both exist). This keeps
+  telemetry numeric-only and streaming unbuffered.
+
 ## Relates to
 
 - `2026-09-05--json-parser-scoped-to-api.md` — why `/v1` must not be body-parsed, hence

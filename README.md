@@ -141,7 +141,7 @@ The single-file UI at `gateway/public/index.html` (served at `http://<pi-ip>:808
 connection (admin key), the model panel (name, quant, status, size, install date, tok/s,
 download progress, restart/update), and live realtime events over `/ws`.
 
-### Control Center v2 (planned)
+### Control Center v2
 
 - **No-overlap layout.** Flex rows get `gap`/`wrap`/`min-width:0` + `overflow-wrap:anywhere`;
   raw status `JSON.stringify` blobs become discrete chips; header/cards wrap on narrow widths.
@@ -157,9 +157,12 @@ download progress, restart/update), and live realtime events over `/ws`.
 - **Typography.** The monospace face is `JetBrainsMono Nerd Font`, then `JetBrains Mono`
   (web fallback), then the system mono stack.
 
-Planned backend support: a bounded request ring in the gateway — numeric telemetry only,
+Implemented backend support: a bounded request ring in the gateway — numeric telemetry only,
 never prompt/response content (preserves the no-logging rule) — exposed via
-`GET /api/requests` and the `request.*` WebSocket events (PRD §6.12, §9.4–9.7).
+`GET /api/requests` and the `request.*` WebSocket events (PRD §6.12, §9.4–9.7). Token
+counts come from response `usage` when present (non-stream JSON) and from llama-server's
+own `slot print_timing` accounting for streams (llama's streaming chunks carry no
+`usage`); unknown counts display as `—`.
 
 ## Documentation
 
@@ -179,8 +182,8 @@ never prompt/response content (preserves the no-logging rule) — exposed via
 - [x] llama-server serves the model under the alias `--alias ${MODEL_NAME}`
 - [x] End-to-end acceptance: streaming completion through `/v1` (llama ready, `modelLoaded`,
   `/v1/models` id `Qwen3-1.7B`, SSE tokens flowing, tok/s surfaced in `/api/system`)
-- [ ] Control Center v2: streams table (`GET /api/requests` + `request.*` WS), Playground,
-  Viridis theme toggle, JetBrains Mono Nerd Font, no-overlap layout — planned, see PRD §6.12
+- [x] Control Center v2: streams table (`GET /api/requests` + `request.*` WS), Playground,
+  Viridis theme toggle, JetBrains Mono Nerd Font, no-overlap layout (PRD §6.12, §9.4–9.7)
 
 ## Getting started from your laptop
 

@@ -121,6 +121,20 @@ export function createRequestTracker(opts: RequestTrackerOptions = {}): RequestT
           return;
         }
       }
+      for (let i = ring.length - 1; i >= 0; i--) {
+        const record = ring[i];
+        if (record.status === "completed" && record.totalTokens == null) {
+          record.promptTokens = timing.promptTokens;
+          record.completionTokens = timing.completionTokens;
+          record.totalTokens = timing.totalTokens;
+          record.tokensPerSecond =
+            record.completionTokens != null && record.durationMs != null && record.durationMs > 0
+              ? record.completionTokens / (record.durationMs / 1000)
+              : null;
+          emit(record);
+          return;
+        }
+      }
     },
     snapshot: () => [...ring],
     subscribe: (cb) => {

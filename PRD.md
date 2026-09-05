@@ -320,10 +320,16 @@ log
     numeric token counts (`promptTokens`, `completionTokens`, `totalTokens`) and
     `tokensPerSecond`, plus an optional error message. These are intentional telemetry
     records and never contain prompt or response content (preserves §6.7 #33).
-44. **Token accounting without buffering.** Token counts are read from the proxied
-    response stream — the `usage` field of a JSON response, or the final SSE chunk before
-    `[DONE]` — by sniffing the passthrough writes for numeric fields only. Streaming
-    responses stay fully unbuffered (§6.5 #24).
+44. **Token accounting without buffering.** Token counts come from two numeric-only
+    sources and are never parsed from content. When the proxied response carries a
+    `usage` field (JSON responses, and OpenAI-style SSE final chunks when the server
+    emits one) the counts are read by sniffing the passthrough writes for numeric
+    fields only. Streaming responses stay fully unbuffered (§6.5 #24). llama-server
+    does not emit `usage` in streaming chunks; for streams the counts are taken from
+    llama-server's own per-task `slot print_timing` accounting on stderr (the
+    `prompt eval time`, `eval time` and `total time` token figures), attributed to the
+    in-flight request. Response `usage` wins over llama timing when both are present.
+    Unknown counts render as `—` in the table.
 45. **Requests surface.** `GET /api/requests` (admin key) returns the ring; `request.*`
     events (§6.11) are pushed over `/ws` as requests move `started → completed | error`.
 46. **Streams table.** The control center shows a bounded table of inference requests —
