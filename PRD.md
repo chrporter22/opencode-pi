@@ -379,6 +379,52 @@ log
     treatment so the UI reads as alive. The topbar title carries a subtitle tag naming the
     app (e.g. "opencode-pi gateway"). The theme set (§6.12 #48) is preserved.
 
+### 6.13 Analytics & risk layer (ML plan)
+
+56. **Analytics microservice.** A separate Python process (`analytics`, port `8081`) consumes
+    gateway telemetry via a webhook and runs the ML layer: a TF-Lite neural net for risk/drift
+    inference, PCA eigen-decomposition for the risk model, and windowed historic analysis. It
+    is a sibling service in this repo (same Compose stack), runtime-decoupled from the gateway:
+    the gateway never blocks inference on analytics availability.
+57. **Feature & context windows.** Numeric-only features roll into fixed windows
+    (`ANALYTICS_FEATURE_WINDOW_SEC`, default 60s). The model consumes a **context window** —
+    the last `ANALYTICS_CONTEXT_WINDOWS` windows per feature (default 12 ≈ up to 12 min) — as
+    its input tensor. Windowed aggregates drive historic drift analysis; per-request features
+    drive the live serving path.
+58. **Ingest webhook.** The gateway pushes batched request records + window aggregates to
+    `POST /v1/analytics/ingest` (shared secret `INGEST_SECRET`). Push cadence is deferred
+    (TBD). When analytics is unreachable, batches queue in Redis with a bounded escrow and
+    flush on reconnect — no loss, no backpressure on inference. Ingested records stay
+    numeric-only, preserving §6.7 #33.
+59. **Adaptive EWMA reference.** Reference statistics (per-feature mean/σ, PCA loadings)
+    adapt with slow exponential decay (`ANALYTICS_EWMA_DECAY`) rather than being frozen, so
+    risk reads as "drift from the recent norm". A manual re-fit endpoint is provided.
+60. **PCA + risk score.** Eigen-decomposition on the reference covariance yields principal
+    components. Live score = Hotelling `T²` of standardized scores; risk probability = exact
+    `F/χ²` tail of `T²`. "≥1.5σ from the mean" for one component is the two-tailed normal tail
+    (p ≈ 0.134), aggregated across k components. Levels: **normal / watch (>1.5σ) / high**.
+61. **Drift detection.** Feature-level PSI, KS/MMD on PC scores, and loading-vector shift,
+    evaluated over historic stored windows and live on the latest window.
+62. **SQLite vector/embedding store.** Each request and window is a row carrying its feature
+    vector + NN embedding (BLOB). A vector index (`sqlite-vec`) supports nearest-neighbor
+    historic lookback ("when did we behave like this before?"), feeding PCA comparisons and a
+    Control Center lookalikes view.
+63. **Redis.** Full footprint: validated-key cache + per-key rate-limit counters, the analytics
+    ingest escrow queue, and a shared live-score cache between gateway and analytics.
+64. **TF-Lite neural net.** A small offline-trained model (context window → risk + drift
+    probabilities) served via TFLite inside the Python service; training/quantization happens
+    outside the running services and artifacts ship as files.
+65. **Live ML results in the UI (gateway fan-out).** Analytics POSTs latest scores/drift to a
+    gateway endpoint; the gateway broadcasts `analytics.risk` / `analytics.drift` over the
+    existing admin-authenticated `/ws`. The Control Center gains an Analytics card, and
+    historic analysis is admin-proxied via `/api/analytics/*`.
+
+Feature set (numeric-only): per-request `log prompt/completion/total tokens`, `tok/s`,
+`log durationMs`, error-binary; window `requestsPerMinute`, error rate, p95/p99 latency and
+tok/s; system context at inference time (cpu %, mem %, temperature, disk %, thermal ramp).
+Planned numeric additions: `timeToFirstToken`; Qwen3 thinking-share (pending explicit
+approval — still never the content itself).
+
 ## 7. HTTP API Reference
 
 ### 7.1 Control API (`/api/*`) — admin key
@@ -396,6 +442,10 @@ log
 | POST   | `/api/model/update`  | Download & atomically swap a model         |
 | POST   | `/api/model/restart` | Reload `llama-server` with current model   |
 | POST   | `/api/server/restart`| Restart the gateway service                |
+| GET    | `/api/analytics/risk`| Latest risk score + PC components (proxied to analytics) |
+| GET    | `/api/analytics/drift/historic` | Historic drift series (proxied)     |
+| GET    | `/api/analytics/historic/lookalikes` | Nearest historic windows by embedding (proxied) |
+| GET    | `/api/analytics/training/export`     | Labeled training-data export (admin proxy to analytics) |
 
 ### 7.2 Inference API (`/v1/*`) — inference key
 
@@ -404,13 +454,24 @@ log
 | GET    | `/v1/models`            | OpenAI-compatible model list           |
 | POST   | `/v1/chat/completions`  | OpenAI-compatible chat completions     |
 
-### 7.3 Realtime (`/ws`) — admin key
+### 7.3 Analytics API (`:8081/*`) — shared secret
+
+| Method | Path                       | Description                               |
+|--------|----------------------------|-------------------------------------------|
+| POST   | `/v1/analytics/ingest`     | Gateway → analytics batched feature ingestion |
+| POST   | `/v1/analytics/scores`     | Analytics → gateway live score push (fan-out trigger) |
+| POST   | `/v1/analytics/rebaseline` | Manual EWMA / PCA reference re-fit        |
+| GET    | `/v1/analytics/training/export` | Labeled JSONL/CSV training-data export    |
+| GET    | `/v1/analytics/historic/windows` | Paged raw window + embedding records      |
+| GET    | `/v1/analytics/health`     | Analytics liveness (no auth)              |
+
+### 7.4 Realtime (`/ws`) — admin key
 
 | Method | Path | Description                       |
 |--------|------|-----------------------------------|
 | WS     | `/ws`| Server-pushed realtime events     |
 
-### 7.4 Example responses
+### 7.5 Example responses
 
 `GET /health`
 
@@ -673,6 +734,13 @@ Configuration is controlled through environment variables (`.env`, loaded by Doc
 | `MODEL_DIR`             | Host model directory                          | `/opt/qwen-model`           |
 | `AUTO_UPDATE_MODEL`     | Automatic model updates (must be opt-in)      | `false`                     |
 | `AUTO_UPDATE_INTERVAL`  | Update check interval when auto-update is on  | `24h`                       |
+| `ANALYTICS_PORT`        | Analytics microservice port                   | `8081`                      |
+| `ANALYTICS_URL`         | Base URL for gateway → analytics calls        | `http://analytics:8081`     |
+| `INGEST_SECRET`         | Shared secret for the analytics webhook       | (required)                  |
+| `REDIS_URL`             | Redis connection string                       | `redis://redis:6379`        |
+| `ANALYTICS_FEATURE_WINDOW_SEC` | Feature aggregation window            | `60`                        |
+| `ANALYTICS_CONTEXT_WINDOWS`    | Context windows fed to the model       | `12`                        |
+| `ANALYTICS_EWMA_DECAY`  | EWMA reference decay per window               | `0.005`                     |
 
 Notes:
 
@@ -908,6 +976,15 @@ Streaming (`"stream": true`) must also be tested.
 - The sidebar scrollspy highlights the active section; the bottom status bar updates live (chips, CPU % / memory % / tok/s / API per min) with a ticking clock.
 - No UI text overlaps: labels and values stay on separate flex rows/wrapped lines, and no raw JSON blobs render in status rows.
 - Request records never contain prompt or response content.
+
+### Analytics & risk layer
+
+- The analytics microservice ingests gateway telemetry via the webhook and scores windows against the adaptive EWMA reference; no gateway request path blocks on analytics availability.
+- Risk output is a multivariate tail probability: the 1.5σ threshold yields normal / watch / high states; drift flags (PSI / KS / MMD, loading shift) are surfaced over historic windows.
+- SQLite stores request and window rows with embeddings and a vector index for nearest-neighbor lookback; Redis backs the key cache, rate-limit counters, the ingest escrow, and the live-score cache.
+- Live `analytics.risk` / `analytics.drift` events reach the Control Center over the existing authenticated WebSocket via gateway fan-out.
+- Training data exports as labeled JSONL/CSV (`/v1/analytics/training/export` and the `/api/analytics/training/export` admin proxy); raw windows are available via `/v1/analytics/historic/windows`.
+- Transmitted metrics remain numeric-only — never prompt, response, or reasoning content.
 
 ## 21. Design Principles
 

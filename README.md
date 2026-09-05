@@ -21,6 +21,11 @@ LAN ──► Express Gateway :8080 (single LAN entry point)
            ├─ /ws          → realtime events (admin key)
            └─ node http-proxy → lightweight reverse proxy (lite nginx)
                 └─► llama-server 127.0.0.1:8000 (never on the LAN)
+                     ▲ webhook (numeric telemetry only)
+                     │
+      analytics :8081 (Python, planned) ──► Redis ──► SQLite (+ vector) store
+        TFLite NN · PCA + risk · drift detection (offline-trained model)
+        live scores back to gateway → /ws fan-out
 ```
 
 - **One exposed port.** The gateway binds `0.0.0.0:8080`; only `8080:8080` is published. `llama-server` binds `127.0.0.1:8000` and is never on the LAN.
@@ -40,11 +45,14 @@ opencode-pi/
 ├── Dockerfile               ← small: Node gateway only
 ├── .env.example
 ├── model/                   ← documents the model-as-data convention
+├── analytics/               ← planned Python analytics microservice (analytics-layer doc)
 ├── gateway/
 │   ├── public/index.html    ← single-file control center UI
 │   └── src/                 ← Express + http-proxy + auth + model mgmt
 │       ├── model/           ← atomic model download/install/ensure (actions under model/actions/)
 │       └── modules/llama/   ← llama-server supervisor + shields + stats
+├── docs/
+│   └── analytics-layer.md   ← analytics & risk layer design (data contracts)
 ├── scripts/
 │   ├── install.sh           ← provision llama.cpp into /opt/llama (host)
 │   ├── update.sh            ← update llama runtime on host
@@ -124,16 +132,24 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | `MODEL_SHA256`        | Optional download checksum       | (unset)       |
 | `MODEL_DIR`           | Host model directory             | `/opt/qwen-model` |
 | `AUTO_UPDATE_MODEL`   | Opt-in automatic updates         | `false`       |
+| `ANALYTICS_PORT`      | Analytics microservice port      | `8081`        |
+| `ANALYTICS_URL`       | Gateway → analytics base URL     | `http://analytics:8081` |
+| `INGEST_SECRET`       | Shared secret for the webhook    | required      |
+| `REDIS_URL`           | Redis connection string          | `redis://redis:6379` |
+| `ANALYTICS_FEATURE_WINDOW_SEC` | Feature aggregation window | `60`    |
+| `ANALYTICS_CONTEXT_WINDOWS` | Context windows fed to model   | `12`        |
+| `ANALYTICS_EWMA_DECAY`| EWMA reference decay per window  | `0.005`       |
 
 ## API summary
 
 | Area        | Surface       | Auth          |
 |-------------|---------------|---------------|
 | Health      | `GET /health` | none          |
-| Control     | `GET /api/status`, `/api/model`, `/api/system`, `/api/metrics`, `/api/logs` | admin key |
+| Control     | `GET /api/status`, `/api/model`, `/api/system`, `/api/system/host`, `/api/metrics`, `/api/logs`, `/api/requests`, `/api/analytics/*` | admin key |
 | Operations  | `POST /api/model/update`, `/api/model/restart`, `/api/server/restart` | admin key |
 | Inference   | `GET /v1/models`, `POST /v1/chat/completions` | inference key |
 | Realtime    | `WS /ws`      | admin key     |
+| Analytics (planned) | `POST :8081/v1/analytics/ingest` (webhook), `GET …/training/export`, `GET …/historic/windows`, `POST …/scores`, `POST …/rebaseline` | shared secret |
 
 ## Control center
 
@@ -167,8 +183,9 @@ download progress, restart/update), and live realtime events over `/ws`.
   log window; one column on narrow screens. Each card carries its own accent color
   (Connection, System, Model, Host, Playground, Streams, Events) on a top border and title,
   with a subtle glow/hover/pulse treatment.
-- **Theme toggle.** Dark (default) and a subtle Viridis-tinted variant, persisted in
-  `localStorage`.
+- **Theme toggle.** Cycles four themes — `Dark` (default), `Viridis` (subtle Viridis tint),
+  `Whale` (cool ocean blues), `Rosé Pine` — persisted in `localStorage`. The toggle lives in
+  the top bar and the bottom status bar.
 - **Typography.** The monospace face is `JetBrainsMono Nerd Font`, then `JetBrains Mono`
   (web fallback), then the system mono stack.
 
@@ -180,9 +197,46 @@ rolling `requestsPerMinute` on `/api/system` / `/api/metrics` / `system.metrics`
 llama-server's own `slot print_timing` accounting for streams (llama's streaming chunks carry
 no `usage`); unknown counts display as `—`.
 
+## Analytics & risk layer (planned)
+
+A separate Python microservice (`analytics/`, port `8081`) gives the control center a
+data-science / ML layer for drift detection and risk scoring — **numeric-only telemetry,
+never prompt/response/reasoning content**.
+
+- **Ingest webhook.** The gateway pushes per-request records and 60s window aggregates to
+  `POST /v1/analytics/ingest` (shared secret). On outage, batches queue in Redis and flush on
+  reconnect — no loss, no inference backpressure. (Push cadence is TBD.)
+- **Context windows.** Features (per-request token counts/duration/tok/s, window
+  requests/min + error rate + p95/p99, system cpu/mem/temp/disk at inference time) roll into
+  60s windows; the model consumes the last `ANALYTICS_CONTEXT_WINDOWS` windows as its input
+  tensor.
+- **Adaptive EWMA reference.** Mean/σ and PCA loadings decay slowly, so risk reads as
+  "drift from the recent norm"; a manual re-fit endpoint is available.
+- **PCA + 1.5σ risk model.** Hotelling `T²` of standardized scores → exact `F/χ²` tail
+  probability; "≥1.5σ" per component is the two-tailed normal tail (p ≈ 0.134), aggregated
+  across k components. Levels: normal / watch (>1.5σ) / high. Drift via feature PSI, KS/MMD
+  on PC scores, and loading shift.
+- **SQLite vector/embedding store + Redis.** Windows and requests are stored with feature
+  vectors and NN embeddings (`sqlite-vec` index) for historic lookback; Redis backs the key
+  cache, per-key rate limits, the ingest escrow, and the live-score cache.
+- **TF-Lite neural net.** A small offline-trained model (context window → risk/drift
+  probabilities) served via TFLite in Python; training/quantization happens outside the
+  running services.
+- **Live result transport — gateway fan-out.** Analytics POSTs scores/drift to the gateway,
+  which broadcasts `analytics.risk` / `analytics.drift` over the existing admin `/ws`. The
+  Control Center gains an Analytics card; historic analysis is admin-proxied via
+  `/api/analytics/*`.
+- **Training data endpoint.** `GET /v1/analytics/training/export` (shared secret) or the
+  admin proxy `GET /api/analytics/training/export` returns labeled JSONL/CSV — each window
+  with `features`, `context`, `pcs`, `risk` and the `normal | watch | high` label
+  auto-derived from the risk model. Raw paging via `GET /v1/analytics/historic/windows`.
+
+Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD §6.13, §7.3.
+
 ## Documentation
 
-- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–55), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
+- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–65), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
+- [`docs/analytics-layer.md`](docs/analytics-layer.md) — analytics & risk layer design: feature/key/embedding schema and service↔service data contracts.
 
 ## Status
 
@@ -200,6 +254,8 @@ no `usage`); unknown counts display as `—`.
   `/v1/models` id `Qwen3-1.7B`, SSE tokens flowing, tok/s surfaced in `/api/system`)
 - [x] Control Center v2: streams table (`GET /api/requests` + `request.*` WS), Playground,
   Viridis theme toggle, JetBrains Mono Nerd Font, no-overlap layout (PRD §6.12, §9.4–9.7)
+- [ ] Analytics & risk layer: Python microservice, webhook ingest, EWMA + PCA risk,
+  drift detection, SQLite vector store, Redis, gateway fan-out (PRD §6.13 — planned)
 
 ## Getting started from your laptop
 
