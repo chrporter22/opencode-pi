@@ -1,8 +1,8 @@
 # opencode-pi — Product Requirements Document
 
 - **Product:** opencode-pi
-- **Status:** Draft v0.2 (integrates original product spec §1–40 with control-plane additions §41–42)
-- **Date:** 2026-09-04
+- **Status:** Draft v0.3 (integrates original product spec §1–40, control-plane additions §41–42, and Control Center v2 §6.12 + §9.4–9.7)
+- **Date:** 2026-09-05
 - **Owner:** <tbd>
 
 ## 1. Overview
@@ -231,7 +231,7 @@ The actual model directory lives outside the repository: `/opt/qwen-model/`.
 ### 6.6 Control API (`/api/*`)
 
 26. **Liveness and status.** `GET /health` returns gateway liveness; `GET /api/status` returns gateway/llama/model status and model-loaded flags; `GET /api/model` returns the installed model metadata.
-27. **Operations surface.** `POST /api/model/update`, `POST /api/model/restart`, and `POST /api/server/restart` expose admin operations; `GET /api/system`, `GET /api/metrics`, and `GET /api/logs` expose operational state.
+27. **Operations surface.** `POST /api/model/update`, `POST /api/model/restart`, and `POST /api/server/restart` expose admin operations; `GET /api/system`, `GET /api/metrics`, `GET /api/logs`, and `GET /api/requests` expose operational state (the last returns the inference request lifecycle ring, §6.12).
 28. **One update mechanism.** Gateway-driven model updates invoke the same atomic model-management mechanism as `scripts/update-model.sh` (staging, verification, swap, reload, cleanup).
 29. **Bounded logs.** The gateway keeps a bounded in-memory log ring; `GET /api/logs` and the live log feed draw from it.
 
@@ -312,6 +312,39 @@ request.error
 log
 ```
 
+### 6.12 Control Center v2 (UI plan)
+
+43. **Inference request ring.** The gateway keeps a bounded, in-memory ring of inference
+    request lifecycle records (`started` / `completed` / `error`). Each record carries:
+    request id, path, model, `startedAt`, `durationMs`, `status`, and — when determinable —
+    numeric token counts (`promptTokens`, `completionTokens`, `totalTokens`) and
+    `tokensPerSecond`, plus an optional error message. These are intentional telemetry
+    records and never contain prompt or response content (preserves §6.7 #33).
+44. **Token accounting without buffering.** Token counts are read from the proxied
+    response stream — the `usage` field of a JSON response, or the final SSE chunk before
+    `[DONE]` — by sniffing the passthrough writes for numeric fields only. Streaming
+    responses stay fully unbuffered (§6.5 #24).
+45. **Requests surface.** `GET /api/requests` (admin key) returns the ring; `request.*`
+    events (§6.11) are pushed over `/ws` as requests move `started → completed | error`.
+46. **Streams table.** The control center shows a bounded table of inference requests —
+    time, request id, status, tokens (prompt/completion/total), tok/s, duration — newest
+    first, backfilled from `GET /api/requests` and updated live from `request.*` events.
+    The `tok/s` value is encoded on a perceptually-uniform Viridis ramp (slow → fast).
+47. **Playground conversation window.** The control center provides a multi-turn chat
+    playground (§9.4) that exercises the same `/v1/chat/completions` path as OpenCode and
+    renders the conversation in a single window (user/assistant bubbles) with Send + Stop
+    and streaming readout. At `LLAMA_PARALLEL=1` only one inference can be in flight;
+    concurrent sends surface llama-server's busy handling.
+48. **Theme toggle.** The control center offers a small palette toggle: a neutral dark
+    theme (default) and a subtle Viridis-tinted dark variant; the choice is persisted in
+    `localStorage`.
+49. **Typography.** The monospace face is **JetBrains Mono Nerd Font** when present on the
+    client, then **JetBrains Mono** (web fallback), then the system mono stack.
+50. **Layout hygiene.** The single-file UI avoids text overlap: flex rows gain
+    `gap`/`wrap`/`min-width:0` with `overflow-wrap:anywhere` on values; long status values
+    render as discrete chips or table cells instead of raw JSON blobs; long-form areas
+    scroll within their cards.
+
 ## 7. HTTP API Reference
 
 ### 7.1 Control API (`/api/*`) — admin key
@@ -324,6 +357,7 @@ log
 | GET    | `/api/system`        | CPU / RAM / temperature / disk             |
 | GET    | `/api/metrics`       | Current metrics snapshot (incl. `tok/s`)   |
 | GET    | `/api/logs`          | Recent log entries                         |
+| GET    | `/api/requests`      | Recent inference request lifecycle records |
 | POST   | `/api/model/update`  | Download & atomically swap a model         |
 | POST   | `/api/model/restart` | Reload `llama-server` with current model   |
 | POST   | `/api/server/restart`| Restart the gateway service                |
@@ -384,9 +418,9 @@ All events are JSON objects with at least a `type` and a `timestamp`.
 | `gateway.status`     | `status`                                                   |
 | `model.status`       | `status`                                                   |
 | `model.update`       | `status` (`downloading` / `verified` / `swapping` / `done` / `error`), `progress` |
-| `request.started`    | request id, model, token estimate                          |
-| `request.completed`  | request id, duration, `tokensPerSecond`, token counts      |
-| `request.error`      | request id, error message                                  |
+| `request.started`    | `id`, `path`, `model`, `startedAt`                        |
+| `request.completed`  | `id`, `model`, `status`, `durationMs`, `promptTokens`, `completionTokens`, `totalTokens`, `tokensPerSecond` |
+| `request.error`      | `id`, `model`, `status`, `startedAt`, `error`             |
 | `log`                | `level`, `message`                                         |
 
 Example — metrics:
@@ -452,7 +486,31 @@ Controls:
 ### 9.4 Playground
 
 - Test chat interface that uses the same `/v1/chat/completions` API as OpenCode — testing the actual production inference path.
-- Requires the inference credential; messages are not persisted by default.
+- Requires the inference credential (**Inference API key**, stored in the browser's `localStorage` alongside the admin key); messages are not persisted by default.
+- One multi-turn conversation window (user bubbles right, assistant left), with Send + Stop (AbortController); SSE tokens stream into the active assistant bubble.
+- Every exchange appears in the Streams table (§9.5) via `request.*` events. At `LLAMA_PARALLEL=1`, one conversation at a time; an in-flight request surfaces llama-server's busy/503 behavior.
+
+### 9.5 Inference streams
+
+A table of recent `/v1/*` inference requests, newest first (bounded, ~20 rows):
+
+| Time | Request | Status | Tokens (P/C/T) | tok/s | Duration |
+|------|---------|--------|----------------|-------|----------|
+
+- Backfilled from `GET /api/requests` on load; live rows are prepended from `request.started` / `request.completed` / `request.error` WebSocket events.
+- The `tok/s` cell is tinted on a Viridis ramp (slow → fast, `#440154` → `#fde725`); rows with no token data show `—`.
+- A small "N active" counter in the card heading tracks streams that are `started` but not yet done.
+
+### 9.6 Theme & typography
+
+- **Theme toggle** in the header: `Dark` (default) / `Viridis`. The Viridis variant keeps a neutral dark base and applies the palette subtly — Viridis-tinted surfaces and borders, a Viridis accent (`#5ec962`), and a Viridis progress gradient (`#440154 → #21918c → #fde725`). Persisted in `localStorage`.
+- **Monospace:** `"JetBrainsMono Nerd Font"` first, then `"JetBrains Mono"` (web fallback), then the system mono stack. Sans faces keep the established system stack.
+
+### 9.7 Layout fixes (no text overlap)
+
+- Flex `.row`s get `gap`, `wrap`, and `min-width:0`; values wrap with `overflow-wrap:anywhere` so long labels and values never collide.
+- Raw `JSON.stringify` status blobs are replaced by discrete status chips and structured rows.
+- The header and cards wrap on narrow widths; `pre` and table regions scroll inside their cards.
 
 ## 10. Model Lifecycle & Data Management
 
@@ -781,6 +839,14 @@ Streaming (`"stream": true`) must also be tested.
 - `llama-server` failure is detected.
 - Logs identify startup/update failures.
 - No unnecessary model copies remain on disk.
+
+### Control Center
+
+- The streams table shows bounded inference-request rows (time, id, status, token counts, tok/s, duration) fed by `GET /api/requests` and live `request.*` WebSocket events.
+- The Playground streams a multi-turn conversation through `/v1/chat/completions` and renders the reply incrementally.
+- The Viridis theme toggle switches and persists; JetBrains Mono Nerd Font is used when the client has it, with web fallback.
+- No UI text overlaps: labels and values stay on separate flex rows/wrapped lines, and no raw JSON blobs render in status rows.
+- Request records never contain prompt or response content.
 
 ## 21. Design Principles
 

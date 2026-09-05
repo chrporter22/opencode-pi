@@ -135,9 +135,35 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | Inference   | `GET /v1/models`, `POST /v1/chat/completions` | inference key |
 | Realtime    | `WS /ws`      | admin key     |
 
+## Control center
+
+The single-file UI at `gateway/public/index.html` (served at `http://<pi-ip>:8080`) covers
+connection (admin key), the model panel (name, quant, status, size, install date, tok/s,
+download progress, restart/update), and live realtime events over `/ws`.
+
+### Control Center v2 (planned)
+
+- **No-overlap layout.** Flex rows get `gap`/`wrap`/`min-width:0` + `overflow-wrap:anywhere`;
+  raw status `JSON.stringify` blobs become discrete chips; header/cards wrap on narrow widths.
+- **Inference streams table.** A bounded table of `/v1/*` requests — time, request id,
+  status, tokens (prompt/completion/total), tok/s, duration — backfilled from
+  `GET /api/requests` and updated live via `request.started`/`request.completed`/`request.error`
+  WebSocket events. The `tok/s` cell is tinted on a Viridis ramp (slow → fast).
+- **Playground.** A multi-turn chat conversation window that streams through the same
+  `/v1/chat/completions` path as OpenCode (uses the inference key; Send + Stop); every
+  exchange shows up in the streams table.
+- **Theme toggle.** Dark (default) and a subtle Viridis-tinted variant, persisted in
+  `localStorage`.
+- **Typography.** The monospace face is `JetBrainsMono Nerd Font`, then `JetBrains Mono`
+  (web fallback), then the system mono stack.
+
+Planned backend support: a bounded request ring in the gateway — numeric telemetry only,
+never prompt/response content (preserves the no-logging rule) — exposed via
+`GET /api/requests` and the `request.*` WebSocket events (PRD §6.12, §9.4–9.7).
+
 ## Documentation
 
-- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–42), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
+- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–50), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
 
 ## Status
 
@@ -153,6 +179,8 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 - [x] llama-server serves the model under the alias `--alias ${MODEL_NAME}`
 - [x] End-to-end acceptance: streaming completion through `/v1` (llama ready, `modelLoaded`,
   `/v1/models` id `Qwen3-1.7B`, SSE tokens flowing, tok/s surfaced in `/api/system`)
+- [ ] Control Center v2: streams table (`GET /api/requests` + `request.*` WS), Playground,
+  Viridis theme toggle, JetBrains Mono Nerd Font, no-overlap layout — planned, see PRD §6.12
 
 ## Getting started from your laptop
 
