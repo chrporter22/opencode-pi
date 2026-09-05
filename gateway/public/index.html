@@ -21,7 +21,28 @@
     --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "SF Mono", Monaco, Consolas, monospace;
   }
   body[data-theme="viridis"] {
+    --card: #1f2629; --border: #2e4147; --input: #26343a; --chip-bg: #2c3a40;
+    --accent: #5ec962; --ok: #5ec962; --err: #f2a05a;
+    --progress-inner: linear-gradient(90deg, var(--viridis-0), var(--viridis-2), var(--viridis-4));
     --glow: rgba(86,201,98,.30); --sidebar: #16201f; --bar: #161a1c;
+  }
+  body[data-theme="whale"] {
+    --bg: #0b1822; --fg: #d8e4ec; --dim: #93a7b4; --faint: #5f7585;
+    --accent: #5ec8e8; --ok: #6ee7b7; --err: #fb7185; --border: #1d3748;
+    --card: #10202e; --input: #173044; --chip-bg: #1d3748;
+    --progress-inner: linear-gradient(90deg, #2dd4bf, #5ec8e8, #7dd3fc);
+    --ac-conn: #7dd3fc; --ac-sys: #fb923c; --ac-model: #a78bfa; --ac-host: #34d399;
+    --ac-pg: #38bdf8; --ac-stream: #fbbf24; --ac-evt: #fb7185;
+    --glow: rgba(94,200,232,.35); --sidebar: #07121b; --bar: #07121b;
+  }
+  body[data-theme="rose-pine"] {
+    --bg: #191724; --fg: #e0def4; --dim: #908caa; --faint: #6e6a86;
+    --accent: #c4a7e7; --ok: #9ccfd8; --err: #eb6f92; --border: #26233a;
+    --card: #1f1d2e; --input: #26233a; --chip-bg: #2a2837;
+    --progress-inner: linear-gradient(90deg, #31748f, #9ccfd8, #ebbcba);
+    --ac-conn: #9ccfd8; --ac-sys: #eb6f92; --ac-model: #c4a7e7; --ac-host: #31748f;
+    --ac-pg: #ebbcba; --ac-stream: #f6c177; --ac-evt: #eb6f92;
+    --glow: rgba(196,167,231,.35); --sidebar: #13111e; --bar: #13111e;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -56,6 +77,10 @@
   .content { flex: 1; margin-left: 220px; min-width: 0; padding: 20px 24px 8px; }
   .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
   .topbar h1 { font-size: 18px; font-weight: 600; }
+  .topbar h1 .sub {
+    font-family: var(--mono); font-weight: 400; font-size: 12px; color: var(--faint);
+    margin-left: 8px; letter-spacing: .3px; vertical-align: 2px;
+  }
   .topbar .spacer { flex: 1; min-width: 12px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); display: inline-block; }
   .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
@@ -151,6 +176,8 @@
   table.streams th, table.streams td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.streams th { color: var(--dim); font-weight: 500; }
   table.streams td:last-child { padding-right: 0; }
+  table.streams tbody tr { cursor: pointer; }
+  table.streams tbody tr:hover { background: rgba(255,255,255,.035); }
   table.streams td.num { font-variant-numeric: tabular-nums; }
   table.streams td.dim { color: var(--faint); }
   .t1 { color: var(--viridis-1); } .t2 { color: var(--viridis-2); }
@@ -162,6 +189,7 @@
     background: #1b1b1b; border: 1px solid var(--border); border-radius: 6px; color: var(--dim);
   }
   .log .evt { padding: 1px 0; word-break: break-all; }
+  .log .evt.flash { background: color-mix(in srgb, var(--accent) 16%, transparent); transition: background .3s; }
   .log .t { color: var(--faint); margin-right: 6px; flex-shrink: 0; }
   .log .tag { display: inline-block; min-width: 16px; margin-right: 8px; }
   .log .tag.err { color: var(--err); }
@@ -198,7 +226,7 @@
 
   <main class="content">
     <div class="topbar">
-      <h1><span class="dot" id="statusDot"></span>&nbsp;Control center</h1>
+      <h1><span class="dot" id="statusDot"></span>&nbsp;Control center<span class="sub">opencode-pi gateway</span></h1>
       <span class="spacer"></span>
       <button id="btnTheme">Theme: Dark</button>
     </div>
@@ -343,15 +371,24 @@
     ));
   }
 
+  const THEMES = ["dark", "viridis", "whale", "rose-pine"];
+  const THEME_LABELS = { dark: "Dark", viridis: "Viridis", whale: "Whale", "rose-pine": "Rosé Pine" };
   function applyTheme() {
-    const t = localStorage.getItem("piTheme") === "viridis" ? "viridis" : "dark";
+    const stored = localStorage.getItem("piTheme");
+    const t = THEMES.includes(stored) ? stored : "dark";
     document.body.dataset.theme = t;
-    q("btnTheme").textContent = t === "viridis" ? "Theme: Viridis" : "Theme: Dark";
+    const label = THEME_LABELS[t];
+    q("btnTheme").textContent = "Theme: " + label;
+    const tb = q("btnThemeBar");
+    if (tb) tb.textContent = "Theme: " + label;
   }
-  q("btnTheme").addEventListener("click", () => {
-    localStorage.setItem("piTheme", document.body.dataset.theme === "viridis" ? "dark" : "viridis");
+  function cycleTheme() {
+    const cur = THEMES.indexOf(document.body.dataset.theme);
+    const next = THEMES[(cur + 1) % THEMES.length];
+    localStorage.setItem("piTheme", next);
     applyTheme();
-  });
+  }
+  q("btnTheme").addEventListener("click", cycleTheme);
 
   function chip(id, state) {
     const el = q(id);
@@ -393,10 +430,7 @@
     clock.className = "clock";
     clock.id = "sbClock";
     bar.appendChild(clock);
-    theme.addEventListener("click", () => {
-      localStorage.setItem("piTheme", document.body.dataset.theme === "viridis" ? "dark" : "viridis");
-      applyTheme();
-    });
+    theme.addEventListener("click", cycleTheme);
   }
   function renderStatusbar(state) {
     if (!q("sbGw")) buildStatusbar();
@@ -551,6 +585,7 @@
         ? ' class="' + stCls + ' clk" data-id="' + escapeHtml(r.id) + '"'
         : ' class="' + stCls + '"';
       const tr = document.createElement("tr");
+      tr.dataset.id = r.id;
       tr.innerHTML =
         "<td>" + new Date(r.startedAt).toLocaleTimeString() + "</td>" +
         '<td title="' + escapeHtml(r.id) + (r.path ? " · " + escapeHtml(r.path) : "") + '">' + shortId(r.id) + "</td>" +
@@ -572,20 +607,24 @@
     renderStreams();
   }
   q("streamRows").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr");
+    if (!tr) return;
     const cell = e.target.closest(".clk");
-    if (!cell) return;
-    const rec = reqs.get(cell.getAttribute("data-id"));
-    if (!rec || rec.status !== "error") return;
-    const tr = cell.closest("tr");
-    const next = tr?.nextElementSibling;
-    if (next && next.classList.contains("errDetail")) {
-      next.remove();
-      return;
+    if (cell) {
+      const rec = reqs.get(cell.getAttribute("data-id"));
+      if (rec && rec.status === "error") {
+        const next = tr.nextElementSibling;
+        if (next && next.classList.contains("errDetail")) {
+          next.remove();
+        } else {
+          const d = document.createElement("tr");
+          d.className = "errDetail";
+          d.innerHTML = '<td colspan="6"><span style="color:var(--faint)">reason:</span> ' + escapeHtml(rec.error || "—") + "</td>";
+          tr.after(d);
+        }
+      }
     }
-    const d = document.createElement("tr");
-    d.className = "errDetail";
-    d.innerHTML = '<td colspan="6"><span style="color:var(--faint)">reason:</span> ' + escapeHtml(rec.error || "—") + "</td>";
-    tr?.after(d);
+    if (tr.dataset.id) jumpToLog(tr.dataset.id);
   });
   function handleRequestEvent(obj) {
     if (obj.type !== "request.started" && obj.type !== "request.completed" && obj.type !== "request.error") return;
@@ -697,13 +736,34 @@
       default: return ["dim", String(type).slice(0, 12)];
     }
   }
-  function appendLog(type, text, level) {
+  function idFromLog(s) {
+    const m = String(s).match(/(?:req(?:uest)?[ _-]?id|taskId)\s*[:=]\s*["']?([A-Za-z0-9_-]+)/i);
+    return m ? m[1] : null;
+  }
+  function jumpToLog(reqId) {
+    const log = q("log");
+    const matches = [...log.querySelectorAll('[data-req="' + reqId + '"]')];
+    if (!matches.length) {
+      appendLog("log", "No log entries yet for request " + shortId(reqId), "info");
+      return;
+    }
+    for (const el of matches) {
+      el.classList.add("flash");
+      el.dataset.flashT = setTimeout(() => {
+        el.classList.remove("flash");
+        delete el.dataset.flashT;
+      }, 1600);
+    }
+    matches[0].scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  function appendLog(type, text, level, reqId) {
     const el = q("log");
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
     const [cls, label] = logTagInfo(type);
     const colorCls = type === "log" && (level === "error" || level === "warn") ? (level === "error" ? "err" : "warn") : cls;
     const row = document.createElement("div");
     row.className = "evt";
+    if (reqId) row.dataset.req = String(reqId);
     const t = document.createElement("span");
     t.className = "t";
     t.textContent = new Date().toLocaleTimeString();
@@ -731,11 +791,12 @@
         appendLog("log", String(ev.data).slice(0, 400));
         return;
       }
+      const reqId = obj.type.startsWith("request.") ? obj.id : idFromLog(obj.message ?? JSON.stringify(obj));
       if (obj.type === "log") {
-        appendLog("log", obj.message ?? "", obj.level);
+        appendLog("log", obj.message ?? "", obj.level, reqId);
         if (obj.message) parseLogLine(obj.message);
       } else {
-        appendLog(obj.type, JSON.stringify(obj).slice(0, 400));
+        appendLog(obj.type, JSON.stringify(obj).slice(0, 400), undefined, reqId);
       }
       if (obj.type === "model.status") refresh();
       if (obj.type === "llama.status" || obj.type === "gateway.status") refresh();
@@ -757,8 +818,8 @@
 
   keyInput.value = localStorage.getItem("adminKey") || "";
   iKeyInput.value = localStorage.getItem("inferenceKey") || "";
-  applyTheme();
   buildStatusbar();
+  applyTheme();
   tickClock();
   setInterval(tickClock, 1000);
   setupScrollspy();

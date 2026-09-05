@@ -341,9 +341,10 @@ log
     renders the conversation in a single window (user/assistant bubbles) with Send + Stop
     and streaming readout. At `LLAMA_PARALLEL=1` only one inference can be in flight;
     concurrent sends surface llama-server's busy handling.
-48. **Theme toggle.** The control center offers a small palette toggle: a neutral dark
-    theme (default) and a subtle Viridis-tinted dark variant; the choice is persisted in
-    `localStorage`.
+48. **Theme set.** The control center offers a cycling palette toggle through four themes —
+    **Dark** (default), **Viridis** (subtle Viridis-tinted dark), **Whale** (cool ocean
+    blues), and **Rosé Pine** — each overriding the same core CSS token set; the choice is
+    persisted in `localStorage`.
 49. **Typography.** The monospace face is **JetBrains Mono Nerd Font** when present on the
     client, then **JetBrains Mono** (web fallback), then the system mono stack.
 50. **Layout hygiene.** The single-file UI avoids text overlap: flex rows gain
@@ -365,7 +366,9 @@ log
     is capped at 300 lines, and has a Clear button. Error/warn `log` events and request
     failures are colored distinctly.
 54. **Error drill-down.** In the streams table an `error` status is clickable and toggles an
-    inline `reason:` row showing the error message for that request.
+    inline `reason:` row showing the error message for that request. Clicking any stream row
+    scrolls the log window to that request's related entries and briefly flashes them, so the
+    request's activity is easy to trace in the realtime log.
 55. **Shell, navigation & theme.** The control center is a single page with a fixed left
     sidebar (brand mark + one link per section, each with a colored marker matching its card
     accent; the active section highlights via scrollspy; on narrow screens the sidebar
@@ -373,7 +376,8 @@ log
     chips, CPU %, memory %, token rate, API calls/min, a 1-second clock, and the theme toggle.
     Cards carry per-module accent colors (Connection, System, Model, Host, Playground,
     Streams, Events) on their top border and card title, with a subtle glow/hover/pulse
-    treatment so the UI reads as alive. The Dark/Viridis toggle (§6.12 #48) is preserved.
+    treatment so the UI reads as alive. The topbar title carries a subtitle tag naming the
+    app (e.g. "opencode-pi gateway"). The theme set (§6.12 #48) is preserved.
 
 ## 7. HTTP API Reference
 
@@ -533,10 +537,16 @@ A table of recent `/v1/*` inference requests, newest first (bounded, ~20 rows):
 - The `tok/s` cell is tinted on a Viridis ramp (slow → fast, `#440154` → `#fde725`); rows with no token data show `—`.
 - A small "N active" counter in the card heading tracks streams that are `started` but not yet done.
 - An `error` status is clickable (§6.12 #54): clicking toggles an inline row showing the request's error reason.
+- Clicking any stream row (§6.12 #54) scrolls the log window to that request's entries and flashes them.
 
 ### 9.6 Theme & typography
 
-- **Theme toggle** in the header: `Dark` (default) / `Viridis`. The Viridis variant keeps a neutral dark base and applies the palette subtly — Viridis-tinted surfaces and borders, a Viridis accent (`#5ec962`), and a Viridis progress gradient (`#440154 → #21918c → #fde725`). Persisted in `localStorage`.
+- **Theme toggle** in the header cycles through four themes: `Dark` (default) / `Viridis` /
+  `Whale` / `Rosé Pine`. The Viridis variant keeps a neutral dark base and applies the palette
+  subtly — Viridis-tinted surfaces and borders, a Viridis accent (`#5ec962`), and a Viridis
+  progress gradient (`#440154 → #21918c → #fde725`). Whale uses cool ocean blues; Rosé Pine
+  uses its rose/pine/foam/iris palette. Each theme overrides the same core token set, and the
+  choice is persisted in `localStorage`.
 - **Monospace:** `"JetBrainsMono Nerd Font"` first, then `"JetBrains Mono"` (web fallback), then the system mono stack. Sans faces keep the established system stack.
 
 ### 9.7 Layout fixes (no text overlap)
