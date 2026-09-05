@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
+.ai
+.claude
+*.md
+!model/README.md
+Dockerfile.dev
+docker-compose.yml
+docker-compose*.yml
+scripts

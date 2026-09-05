@@ -1,0 +1,29 @@
+services:
+  gateway-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: npm run dev
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./gateway:/app
+      - /app/node_modules
+      - /opt/llama:/opt/llama:ro
+      - /opt/qwen-model:/models
+    restart: unless-stopped
+
+  gateway-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: npm test
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=test
+    volumes:
+      - ./gateway:/app
+      - /app/node_modules

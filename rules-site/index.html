@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Rules</title>
+<style>
+  :root {
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    --font-mono: "SF Mono", Monaco, "Cascadia Code", "Fira Code", Consolas, "Courier New", monospace;
+  }
+  [data-theme="dark"] {
+    --bg-editor: #1e1e1e; --bg-sidebar: #252526; --bg-activity: #333333; --bg-titlebar: #3c3c3c;
+    --bg-tabs: #252526; --bg-tab-active: #1e1e1e; --bg-statusbar: #007acc; --bg-hover: #2a2d2e;
+    --bg-card: #252526; --bg-card-hover: #2d2d30; --bg-modal: #252526; --bg-input: #3c3c3c;
+    --bg-badge: #4d4d4d33; --bg-code: #1a1a1a; --bg-selected: #094771;
+    --border: #3c3c3c; --border-focus: #007fd4; --shadow: rgba(0,0,0,.5);
+    --fg: #cccccc; --fg-dim: #9d9d9d; --fg-faint: #6e6e6e; --fg-titlebar: #cccccc;
+    --accent: #569cd6; --keyword: #c586c0; --string: #ce9178; --comment: #6a9955;
+    --fn: #dcdcaa; --type: #4ec9b0; --number: #b5cea8; --error: #f48771; --warn: #cca700;
+    --statusbar-fg: #ffffff;
+  }
+  [data-theme="light"] {
+    --bg-editor: #ffffff; --bg-sidebar: #f3f3f3; --bg-activity: #2c2c2c; --bg-titlebar: #dddddd;
+    --bg-tabs: #ececec; --bg-tab-active: #ffffff; --bg-statusbar: #007acc; --bg-hover: #e8e8e8;
+    --bg-card: #f8f8f8; --bg-card-hover: #f0f0f0; --bg-modal: #ffffff; --bg-input: #ffffff;
+    --bg-badge: #00000010; --bg-code: #f5f5f5; --bg-selected: #cde6f7;
+    --border: #d4d4d4; --border-focus: #007fd4; --shadow: rgba(0,0,0,.2);
+    --fg: #333333; --fg-dim: #616161; --fg-faint: #999999; --fg-titlebar: #333333;
+    --accent: #0070c1; --keyword: #af00db; --string: #a31515; --comment: #008000;
+    --fn: #795e26; --type: #267f99; --number: #098658; --error: #cd3131; --warn: #bf8803;
+    --statusbar-fg: #ffffff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-ui); font-size: 13px; color: var(--fg);
+    background: var(--bg-editor); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--fg-faint); opacity: .4; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- Title bar ---------- */
+  .titlebar {
+    height: 32px; background: var(--bg-titlebar); color: var(--fg-titlebar);
+    display: flex; align-items: center; padding: 0 12px; flex-shrink: 0; user-select: none;
+  }
+  .traffic { display: flex; gap: 8px; margin-right: 14px; }
+  .traffic span { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .t-red { background: #ff5f57; } .t-yellow { background: #febc2e; } .t-green { background: #28c840; }
+  .titlebar .title { flex: 1; text-align: center; font-size: 12px; color: var(--fg-dim); }
+  .titlebar .spacer { width: 74px; }
+
+  /* ---------- Layout ---------- */
+  .workbench { flex: 1; display: flex; min-height: 0; }
+
+  .activitybar {
+    width: 48px; background: var(--bg-activity); flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center; padding: 8px 0;
+  }
+  .activitybar button {
+    width: 48px; height: 44px; background: none; border: none; cursor: pointer;
+    color: #858585; display: flex; align-items: center; justify-content: center;
+    border-left: 2px solid transparent;
+  }
+  .activitybar button.active { color: #ffffff; border-left-color: #ffffff; }
+  .activitybar button:hover { color: #ffffff; }
+  .activitybar .grow { flex: 1; }
+  .activitybar svg { width: 22px; height: 22px; }
+
+  .sidebar {
+    width: 260px; background: var(--bg-sidebar); border-right: 1px solid var(--border);
+    flex-shrink: 0; display: flex; flex-direction: column; min-height: 0;
+  }
+  .sidebar h3 {
+    font-size: 11px; font-weight: 400; letter-spacing: .8px; color: var(--fg-dim);
+    padding: 10px 16px 8px; text-transform: uppercase; user-select: none;
+  }
+  .tree { overflow-y: auto; flex: 1; padding-bottom: 12px; }
+  .tree-item {
+    display: flex; align-items: center; gap: 6px; padding: 3px 8px; cursor: pointer;
+    font-size: 13px; color: var(--fg); white-space: nowrap; user-select: none;
+  }
+  .tree-item:hover { background: var(--bg-hover); }
+  .tree-item.selected { background: var(--bg-selected); }
+  .tree-item .chev { width: 16px; text-align: center; color: var(--fg-dim); font-size: 10px; flex-shrink: 0; }
+  .tree-item .icon { flex-shrink: 0; font-size: 12px; width: 16px; text-align: center; }
+  .tree-group.collapsed > .tree-children { display: none; }
+
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+  .tabs {
+    height: 35px; background: var(--bg-tabs); display: flex; flex-shrink: 0;
+    border-bottom: 1px solid var(--border); user-select: none;
+  }
+  .tab {
+    display: flex; align-items: center; gap: 8px; padding: 0 14px; font-size: 13px;
+    background: var(--bg-tabs); color: var(--fg-dim); border-right: 1px solid var(--border);
+    cursor: default;
+  }
+  .tab.active { background: var(--bg-tab-active); color: var(--fg); border-top: 1px solid var(--border-focus); }
+  .tab { cursor: pointer; }
+  .tab .dot { color: var(--fg-dim); }
+  .tab .close {
+    font-size: 13px; color: var(--fg-dim); border-radius: 3px; width: 18px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .tab .close:hover { background: var(--bg-hover); color: var(--fg); }
+  .tab .mdicon { color: var(--accent); font-size: 11px; font-family: var(--font-mono); }
+
+  /* ---------- Markdown preview ---------- */
+  .md-preview { max-width: 860px; margin: 0 auto; padding: 24px 0 60px; line-height: 1.7; font-size: 14px; }
+  .md-preview h1 { font-size: 24px; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin: 26px 0 14px; }
+  .md-preview h1:first-child { margin-top: 0; }
+  .md-preview h2 { font-size: 19px; font-weight: 600; padding-bottom: 6px; border-bottom: 1px solid var(--border); margin: 26px 0 12px; }
+  .md-preview h3 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  .md-preview p { margin: 10px 0; }
+  .md-preview ul, .md-preview ol { margin: 10px 0 10px 24px; }
+  .md-preview li { margin: 5px 0; }
+  .md-preview li::marker { color: var(--fg-faint); }
+  .md-preview code { font-family: var(--font-mono); font-size: 12.5px; background: var(--bg-badge); padding: 1px 5px; border-radius: 3px; color: var(--string); }
+  .md-preview pre { font-family: var(--font-mono); font-size: 12.5px; background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 12px 0; line-height: 1.6; }
+  .md-preview pre code { background: none; padding: 0; color: var(--fg); }
+  .md-preview hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+  .md-preview .md-comment { color: var(--comment); font-family: var(--font-mono); font-size: 12.5px; white-space: pre-wrap; display: block; margin: 10px 0; }
+  .md-preview .frontmatter { color: var(--fg-dim); }
+  .md-preview strong { color: var(--fg); }
+  .md-preview em { color: var(--fg-dim); }
+
+  .breadcrumbs {
+    height: 24px; display: flex; align-items: center; gap: 6px; padding: 0 16px;
+    font-size: 12px; color: var(--fg-dim); flex-shrink: 0; user-select: none;
+  }
+  .breadcrumbs span.sep { color: var(--fg-faint); }
+
+  .editor { flex: 1; overflow-y: auto; padding: 12px 32px 80px; }
+  .editor-inner { max-width: 980px; margin: 0 auto; }
+
+  /* ---------- Welcome content ---------- */
+  .hero { padding: 28px 0 8px; }
+  .hero .comment-line { font-family: var(--font-mono); color: var(--comment); font-size: 13px; margin-bottom: 14px; }
+  .hero h1 { font-size: 26px; font-weight: 600; letter-spacing: -.3px; }
+  .hero h1 .accent { color: var(--accent); }
+  .hero p.sub { color: var(--fg-dim); margin-top: 8px; font-size: 14px; max-width: 640px; line-height: 1.55; }
+  .hero .kbd-hint { margin-top: 14px; font-size: 12px; color: var(--fg-faint); }
+  kbd {
+    font-family: var(--font-mono); font-size: 11px; background: var(--bg-badge);
+    border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px;
+  }
+
+  .section-label {
+    font-family: var(--font-mono); font-size: 12px; color: var(--comment);
+    margin: 30px 0 12px; user-select: none;
+  }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px; cursor: pointer; transition: background .12s, border-color .12s, transform .12s;
+    position: relative;
+  }
+  .card:hover { background: var(--bg-card-hover); border-color: var(--border-focus); transform: translateY(-1px); }
+  .card .badge {
+    display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .5px;
+    padding: 2px 7px; border-radius: 3px; background: var(--bg-badge); margin-bottom: 10px;
+  }
+  .badge.b-mandatory { color: var(--error); }
+  .badge.b-standard { color: var(--type); }
+  .badge.b-memory { color: var(--fn); }
+  .badge.b-setup { color: var(--keyword); }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .card p { font-size: 12.5px; color: var(--fg-dim); line-height: 1.5; }
+  .card .open-hint {
+    position: absolute; top: 14px; right: 14px; font-size: 11px; color: var(--fg-faint);
+    opacity: 0; transition: opacity .12s; font-family: var(--font-mono);
+  }
+  .card:hover .open-hint { opacity: 1; }
+  .card.priority { border-left: 3px solid var(--error); }
+
+  /* ---------- Modal (peek view) ---------- */
+  .overlay {
+    position: fixed; inset: 0; background: var(--shadow); display: none;
+    align-items: flex-start; justify-content: center; z-index: 100; padding: 48px 16px;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--bg-modal); border: 1px solid var(--border-focus); border-radius: 6px;
+    width: 100%; max-width: 780px; max-height: calc(100vh - 96px);
+    display: flex; flex-direction: column; box-shadow: 0 8px 32px var(--shadow);
+    animation: pop .14s ease-out;
+  }
+  @keyframes pop { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .modal-head {
+    display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0; gap: 8px;
+  }
+  .modal-head .path { font-family: var(--font-mono); font-size: 12px; color: var(--fg-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-head .path .file { color: var(--fg); }
+  .modal-head button {
+    background: none; border: none; color: var(--fg-dim); cursor: pointer; font-size: 16px;
+    width: 26px; height: 26px; border-radius: 4px; line-height: 1;
+  }
+  .modal-head button:hover { background: var(--bg-hover); color: var(--fg); }
+  .modal-body { overflow-y: auto; padding: 20px 26px 30px; line-height: 1.65; font-size: 13.5px; }
+  .modal-body h2 { font-size: 19px; margin-bottom: 4px; }
+  .modal-body .tagline { color: var(--fg-dim); font-family: var(--font-mono); font-size: 12px; margin-bottom: 18px; }
+  .modal-body h3 { font-size: 14px; margin: 20px 0 8px; color: var(--accent); }
+  .modal-body p { margin: 8px 0; color: var(--fg); }
+  .modal-body ul { margin: 8px 0 12px 20px; }
+  .modal-body li { margin: 5px 0; }
+  .modal-body li::marker { color: var(--fg-faint); }
+  .modal-body code, .editor code {
+    font-family: var(--font-mono); font-size: 12px; background: var(--bg-badge);
+    padding: 1px 5px; border-radius: 3px; color: var(--string);
+  }
+  .modal-body pre, .editor pre {
+    font-family: var(--font-mono); font-size: 12px; background: var(--bg-code);
+    border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px;
+    overflow-x: auto; margin: 10px 0; line-height: 1.6;
+  }
+  .modal-body pre code, .editor pre code { background: none; padding: 0; color: var(--fg); }
+  .modal-body strong { color: var(--fg); }
+  .modal-body .rule-no { color: var(--error); font-weight: 600; }
+  .c-comment { color: var(--comment); } .c-string { color: var(--string); }
+  .c-keyword { color: var(--keyword); } .c-fn { color: var(--fn); } .c-type { color: var(--type); }
+
+  /* ---------- Quick open ---------- */
+  .quickopen {
+    position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 200;
+    width: 90%; max-width: 560px; background: var(--bg-modal); border: 1px solid var(--border-focus);
+    border-radius: 6px; box-shadow: 0 6px 24px var(--shadow); display: none; overflow: hidden;
+  }
+  .quickopen.open { display: block; }
+  .quickopen input {
+    width: 100%; background: var(--bg-input); border: none; outline: none; color: var(--fg);
+    font-family: var(--font-ui); font-size: 13px; padding: 9px 12px; border-bottom: 1px solid var(--border);
+  }
+  .quickopen .results { max-height: 320px; overflow-y: auto; }
+  .qo-item { padding: 7px 12px; cursor: pointer; display: flex; gap: 10px; align-items: baseline; }
+  .qo-item:hover, .qo-item.sel { background: var(--bg-selected); }
+  .qo-item .qo-title { font-size: 13px; }
+  .qo-item .qo-cat { font-family: var(--font-mono); font-size: 10px; color: var(--fg-faint); margin-left: auto; }
+
+  /* ---------- Status bar ---------- */
+  .statusbar {
+    height: 22px; background: var(--bg-statusbar); color: var(--statusbar-fg);
+    display: flex; align-items: center; padding: 0 12px; gap: 16px; font-size: 12px;
+    flex-shrink: 0; user-select: none;
+  }
+  .statusbar .grow { flex: 1; }
+  .statusbar .item { display: flex; align-items: center; gap: 5px; opacity: .95; }
+  .statusbar .item.clickable { cursor: pointer; }
+  .statusbar .item.clickable:hover { opacity: 1; text-decoration: underline; }
+
+  @media (max-width: 760px) {
+    .sidebar { display: none; }
+    .editor { padding: 8px 16px 60px; }
+  }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="titlebar">
+  <div class="traffic"><span class="t-red"></span><span class="t-yellow"></span><span class="t-green"></span></div>
+  <div class="title">agent-rules</div>
+  <div class="spacer"></div>
+</div>
+
+<div class="workbench">
+  <div class="activitybar">
+    <button class="active" title="Explorer" onclick="toggleSidebar()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 3H5a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V10l-7-7z"/><path d="M13 3v7h7"/></svg>
+    </button>
+    <button title="Search (Ctrl/Cmd+K)" onclick="openQuickOpen()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    </button>
+    <div class="grow"></div>
+    <button title="Toggle theme" onclick="toggleTheme()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <h3>Explorer: Agent-Rules</h3>
+    <div class="tree" id="tree"></div>
+  </div>
+
+  <div class="main">
+    <div class="tabs" id="tabs"></div>
+    <div class="breadcrumbs" id="breadcrumbs"></div>
+    <div class="editor">
+      <div class="editor-inner" id="view-welcome">
+        <div class="hero">
+          <div class="comment-line">// how we work with AI agents — read once, then it's muscle memory</div>
+          <h1><span class="accent">const</span> rules = <span class="accent">require</span>(<span style="color:var(--string)">'agent-rules'</span>)</h1>
+          <p class="sub">One template, every repo. Plan first, single agent, memory lives in the repo. Click any card for the full rule.</p>
+          <p class="kbd-hint"><kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>K</kbd> quick open &nbsp;·&nbsp; <kbd>Esc</kbd> close &nbsp;·&nbsp; theme toggle in the bottom-left bar</p>
+        </div>
+        <div id="cards-root"></div>
+      </div>
+      <div class="md-preview" id="view-doc" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span class="item">⎇ main</span>
+  <span class="item" id="rule-count"></span>
+  <span class="grow"></span>
+  <span class="item clickable" onclick="toggleTheme()" id="theme-label">Dark+ (default)</span>
+  <span class="item">agent-rules</span>
+</div>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="path" id="modal-path"></span>
+      <button onclick="closeModal()" title="Close (Esc)">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div class="quickopen" id="quickopen">
+  <input id="qo-input" placeholder="Search rules… (Esc to dismiss)" autocomplete="off">
+  <div class="results" id="qo-results"></div>
+</div>
+
+<script>
+const RULES = [
+  {
+    id: "plan-first", cat: "MANDATORY", priority: true, path: "AGENTS.md › Highest Priority",
+    title: "Plan first. No quick fixes.",
+    summary: "The most important rule for every run. Urgent, small, or obvious — still plan first before touching code.",
+    body: `
+      <h2>Plan first. No quick fixes.</h2>
+      <div class="tagline">// AGENTS.md › Highest Priority</div>
+      <p>Treat this as the most important repository instruction for <strong>every run</strong>.</p>
+      <ul>
+        <li>If a task feels urgent, small, or obvious — <strong>still plan first</strong> before changing code.</li>
+        <li>Work as a <strong>single agent</strong> — no workers or sub-agents.</li>
+        <li>The workflow is only bypassed when the user explicitly says to ignore repo rules for that specific task.</li>
+      </ul>
+      <h3>Why</h3>
+      <p>The expensive failure mode of agentic coding isn't slow work — it's confident quick fixes that quietly fight the architecture.</p>`
+  },
+  {
+    id: "no-workers", cat: "MANDATORY", priority: true, path: "AGENTS.md › No Workers or Sub-Agents",
+    title: "No workers. No sub-agents.",
+    summary: "All exploration, planning, implementation, and verification is done by one agent in one session.",
+    body: `
+      <h2>No workers. No sub-agents.</h2>
+      <div class="tagline">// AGENTS.md › No Workers or Sub-Agents</div>
+      <ul>
+        <li>Do <strong>not</strong> spin up worker agents, sub-agents, or parallel agent tasks — for exploration, implementation, or review.</li>
+        <li>All work is done directly by the single agent in the main session.</li>
+      </ul>
+      <h3>Why</h3>
+      <p>Keeps the full context of the task in one place and every change reviewable in one thread.</p>`
+  },
+  {
+    id: "memory-first", cat: "MEMORY", priority: true, path: "AGENTS.md › Read Memory First",
+    title: "Read memory first",
+    summary: "Every session starts by reading .ai/decisions/ (the why) and .ai/sessions/ (the recent history) — only what's relevant.",
+    body: `
+      <h2>Read memory first</h2>
+      <div class="tagline">// AGENTS.md › Read Memory First</div>
+      <p>Every session starts by reading repo memory before any planning or code work:</p>
+      <ul>
+        <li><span class="rule-no">1.</span> <code>.ai/decisions/</code> — topic folders relevant to the task. The <strong>why</strong> behind the codebase.</li>
+        <li><span class="rule-no">2.</span> <code>.ai/sessions/</code> — recent session files in relevant topics. What was done, what's unfinished, what was tried and rejected.</li>
+        <li><span class="rule-no">3.</span> Only read what's relevant. Don't load everything — keep context lean.</li>
+      </ul>
+      <p>The full workflow lives in the <code>repo-memory</code> skill at <code>.claude/skills/repo-memory/SKILL.md</code>.</p>`
+  },
+  {
+    id: "approval", cat: "MANDATORY", priority: false, path: "AGENTS.md › Planning and Approval Workflow",
+    title: "Approval before implementation",
+    summary: "Discuss the approach, produce a concrete plan, get explicit user approval, then work subtasks sequentially.",
+    body: `
+      <h2>Approval before implementation</h2>
+      <div class="tagline">// AGENTS.md › Planning and Approval Workflow</div>
+      <ul>
+        <li>Discuss the approach with the user and produce a <strong>concrete plan</strong>.</li>
+        <li>Implementation must not begin until the user <strong>approves the plan</strong> and explicitly says proceed.</li>
+        <li>After approval: break the plan into <strong>ordered subtasks</strong> before any code changes start.</li>
+        <li>Work subtasks <strong>sequentially</strong> — complete and review the current one before starting the next.</li>
+        <li>Ask clarifying questions as needed. Never rush from an unclear request into implementation.</li>
+      </ul>`
+  },
+  {
+    id: "quality", cat: "MANDATORY", priority: false, path: "AGENTS.md › Code Quality Rules",
+    title: "Code quality rules",
+    summary: "Clean, minimal, maintainable. No hacks, no brittle patches, no unnecessary abstractions or broad refactors.",
+    body: `
+      <h2>Code quality rules</h2>
+      <div class="tagline">// AGENTS.md › Code Quality Rules</div>
+      <ul>
+        <li>Do not overcomplicate the codebase.</li>
+        <li>No quick fixes, hacks, or brittle patches.</li>
+        <li>Don't optimize only for shipping the latest bug fix or feature.</li>
+        <li>Every change aligns with the existing <strong>architecture, style, naming, and patterns</strong>.</li>
+        <li>Keep solutions clean, minimal, maintainable.</li>
+        <li>Avoid unnecessary abstractions, design-pattern theater, framework churn, broad refactors.</li>
+        <li>Prefer small, direct changes that reduce or preserve technical debt.</li>
+        <li>Mind side effects and regression risk — consider how a change interacts with nearby code.</li>
+        <li>If the clean path is unclear: <strong>stop and ask</strong> during planning instead of guessing.</li>
+      </ul>
+      <h3>Verification</h3>
+      <ul>
+        <li>Run the relevant checks (tests, type checks, lint, build) for each subtask when practical; review results before moving on.</li>
+        <li>If checks can't run, say so clearly and explain the remaining risk.</li>
+      </ul>`
+  },
+  {
+    id: "sessions", cat: "MEMORY", priority: false, path: ".ai/sessions/ › README.md",
+    title: "Session memory — .ai/sessions/",
+    summary: "AI work history. New file every session, never append to old ones. Timestamp + feature summary in the filename.",
+    body: `
+      <h2>Session memory — <code>.ai/sessions/</code></h2>
+      <div class="tagline">// one file per session, browsable by filename</div>
+      <pre><code>.ai/sessions/<span class="c-type">&lt;topic&gt;</span>/<span class="c-string">&lt;YYYY-MM-DD-HHmm&gt;</span>--<span class="c-fn">&lt;4-5-word-feature-summary&gt;</span>.md
+
+<span class="c-comment">// example</span>
+.ai/sessions/billing/2026-07-06-1430--add-invoice-pdf-export.md</code></pre>
+      <ul>
+        <li><strong>New session = new file, always.</strong> Never append to a previous session's file, even for the same feature.</li>
+        <li>Topic folders are one level deep. <strong>Reuse before creating</strong> — <code>auth</code>, not <code>auth</code> + <code>authentication</code>.</li>
+        <li>Real timestamp from the system (<code>date +%Y-%m-%d-%H%M</code>) — never guessed.</li>
+        <li>Contents: the request, what was done, notable findings, rejected approaches, open threads.</li>
+        <li>Written during the session, finalized before it ends.</li>
+      </ul>
+      <h3>Why filenames carry the summary</h3>
+      <p>Agents skim before they read. A folder listing alone tells the next agent which sessions matter — no need to load everything.</p>`
+  },
+  {
+    id: "decisions", cat: "MEMORY", priority: false, path: ".ai/decisions/ › README.md",
+    title: "Decision history — .ai/decisions/",
+    summary: "The why, append-only. High-level decisions and project logic — no code detail. One file per session per topic.",
+    body: `
+      <h2>Decision history — <code>.ai/decisions/</code></h2>
+      <div class="tagline">// the why behind the product, append-only</div>
+      <pre><code>.ai/decisions/<span class="c-type">&lt;topic&gt;</span>/<span class="c-string">&lt;YYYY-MM-DD&gt;</span>--<span class="c-fn">&lt;short-decision-title&gt;</span>.md
+
+<span class="c-comment">// example</span>
+.ai/decisions/pricing/2026-07-06--annual-plan-discount-change.md</code></pre>
+      <ul>
+        <li>Decision language only: <strong>the what and the why</strong>. Code detail lives in git history and session memory.</li>
+        <li>Only <strong>user/stakeholder-confirmed</strong> decisions — never the agent's own assumptions.</li>
+        <li>Recorded the moment a decision is confirmed, not at session end.</li>
+        <li><strong>Append-only history.</strong> Never edit or delete past files; a reversal is a new file referencing the old one.</li>
+        <li>One file per working session per topic → near-zero git conflicts across parallel developers.</li>
+      </ul>
+      <h3>Purpose</h3>
+      <p>So future agents and humans understand <em>why</em> a change was made, can discuss it, and can answer from it — instead of re-litigating settled decisions.</p>`
+  },
+  {
+    id: "skill", cat: "MEMORY", priority: false, path: ".claude/skills/repo-memory/ › SKILL.md",
+    title: "The repo-memory skill",
+    summary: "Rules nobody follows are decoration. The skill makes reading + writing memory part of every agent session.",
+    body: `
+      <h2>The <code>repo-memory</code> skill</h2>
+      <div class="tagline">// .claude/skills/repo-memory/SKILL.md — ships in every repo</div>
+      <h3>At session start</h3>
+      <ul>
+        <li>Identify the topic(s), read matching decision + recent session files.</li>
+        <li>Create this session's file <strong>immediately</strong> — real timestamp, 4–5-word feature summary.</li>
+      </ul>
+      <h3>During the session</h3>
+      <ul>
+        <li>Update the session file as significant work lands.</li>
+        <li>The moment the user confirms a decision → write the decision file.</li>
+      </ul>
+      <h3>Before session end</h3>
+      <ul>
+        <li>Finalize the session file: request, work done, files touched, open threads.</li>
+        <li>Confirm every confirmed decision has a decision file entry.</li>
+      </ul>
+      <h3>Answering "why" questions</h3>
+      <p>Search <code>.ai/decisions/</code> before reading code or answering from general knowledge. If the answer isn't in decisions, sessions, or code — say so and ask. <strong>Never invent history.</strong></p>`
+  },
+  {
+    id: "contract", cat: "STANDARD", priority: false, path: "AGENTS.md › Engineering Standards",
+    title: "API contract = single source of truth",
+    summary: "Canonical contract lives in the frontend repo. Backend keeps a byte-identical mirror. The CHANGELOG is the live ledger.",
+    body: `
+      <h2>API contract = single source of truth</h2>
+      <div class="tagline">// every project with a frontend/backend split</div>
+      <ul>
+        <li>Canonical contract lives in the <strong>frontend repo</strong> under <code>contract/</code>. Frontend owns it, edits it first.</li>
+        <li>Backend keeps a <strong>byte-identical local mirror</strong> at <code>contract/</code>, updated by hand-copying changed files at each cutover. Backend's own <code>CHANGELOG.md</code> is frozen — never append.</li>
+        <li>Backend imports via relative paths from its mirror. No npm linking, no shared package wrapper, no <code>package.json</code> in the contract folder.</li>
+        <li>Frontend reads it via Vite alias <code>@contract → ./contract</code>. Neither deploy needs the other repo at build time.</li>
+      </ul>
+      <h3>The change flow</h3>
+      <pre><code><span class="c-comment">// 1. every API change starts frontend-side</span>
+edit  frontend/contract/…
+append  frontend/contract/CHANGELOG.md   <span class="c-keyword">status:</span> <span class="c-string">needs-implementation</span>
+
+<span class="c-comment">// 2. backend lands it</span>
+copy  changed files → backend/contract/
+implement, then flip entry → <span class="c-string">done</span></code></pre>
+      <ul>
+        <li>Backend zod validation imports schemas <strong>exclusively</strong> from the local mirror — never re-defines request/response schemas in route files.</li>
+      </ul>`
+  },
+  {
+    id: "code-org", cat: "STANDARD", priority: false, path: "AGENTS.md › Engineering Standards",
+    title: "Code organization",
+    summary: "Plain TypeScript orchestrators, one action per file, namespace helpers, no DI/event bus, files stay small.",
+    body: `
+      <h2>Code organization</h2>
+      <div class="tagline">// AGENTS.md › Engineering Standards › Code Organization</div>
+      <ul>
+        <li><strong>No JSON-driven workflow engines</strong> or config-defined business flows. Ever.</li>
+        <li>Business logic = plain TypeScript orchestrator files. One action per file:</li>
+      </ul>
+      <pre><code>modules/<span class="c-type">&lt;feature&gt;</span>/actions/<span class="c-fn">&lt;actionName&gt;</span>.action.ts</code></pre>
+      <ul>
+        <li>Reading an action file top-to-bottom describes the workflow in English.</li>
+        <li>Helpers are named exports on a static-style namespace object — <code>InvitationHelper.x()</code> — not class methods bound to <code>this</code>.</li>
+        <li><strong>Duplication &gt; premature reuse</strong> in the first iteration. Refactor only when ≥3 call sites genuinely share behavior.</li>
+        <li>No DI framework, no service container, no event bus. Plain imports.</li>
+        <li>Files stay small — an action file passing <strong>~250 lines</strong> gets split.</li>
+      </ul>`
+  },
+  {
+    id: "persistence", cat: "STANDARD", priority: false, path: "AGENTS.md › Engineering Standards",
+    title: "Persistence & ops",
+    summary: "Soft delete only, structured logging with request context, secrets encrypted at rest, Firebase Auth + JWT exchange.",
+    body: `
+      <h2>Persistence &amp; ops</h2>
+      <div class="tagline">// AGENTS.md › Engineering Standards › Persistence and Ops</div>
+      <ul>
+        <li><strong>Soft delete only.</strong> Every collection has <code>deletedAt: Date | null</code>. Hard deletes need explicit user approval.</li>
+        <li><strong>Multi-tenant projects:</strong> every collection carries the tenant key; indexes lead with <code>(organizationId, deletedAt, …)</code>.</li>
+        <li><strong>Structured logging</strong>, separate datasets per environment (<code>&lt;project&gt;-dev</code> / <code>&lt;project&gt;-prod</code>). Levels: <code>info</code> in prod, <code>debug</code> in dev. Every action runs inside a logging context with <code>{ requestId, userId, action }</code> (+ tenant id where applicable). Vendor is chosen per project.</li>
+        <li><strong>Encryption at rest:</strong> all third-party credentials/API keys in the DB are AES-256-GCM encrypted with a master key from env (<code>APP_ENCRYPTION_KEY</code>). Never plaintext.</li>
+        <li><strong>Auth:</strong> Firebase Auth on the client → custom JWT exchange on the backend. <code>Authorization: Bearer …</code> header; multi-tenant projects pass the active tenant via <code>x-org-id</code>.</li>
+      </ul>`
+  },
+  {
+    id: "multi-repo", cat: "SETUP", priority: false, path: "root-template › AGENTS.md",
+    title: "Multi-repo project setup",
+    summary: "All repos of a project under one local root. Agent spins up from root; memory is written into the repo the work belongs to.",
+    body: `
+      <h2>Multi-repo project setup</h2>
+      <div class="tagline">// root-template/AGENTS.md — the local root directory</div>
+      <pre><code>my-project/
+├── AGENTS.md            <span class="c-comment">← from root-template (lists the repos)</span>
+├── frontend/
+├── backend/
+└── superadmin-frontend/</code></pre>
+      <ul>
+        <li>Keep all repos of a project side by side under one root directory; <strong>spin the agent up from the root</strong> so it can reach every repo.</li>
+        <li>Each repo has its own <code>AGENTS.md</code>, <code>CLAUDE.md</code>, and <code>.ai/</code> memory.</li>
+        <li>Session/decision files go <strong>into the repo the work belongs to</strong>. Cross-repo work → one session file per affected repo.</li>
+        <li>Never write memory, code, or config at root level. Git operations happen per repo.</li>
+      </ul>`
+  },
+  {
+    id: "rollout", cat: "SETUP", priority: false, path: "README.md › Rollout",
+    title: "Rollout per project",
+    summary: "Copy repo-template into every repo (incl. hidden folders), fill the project-specific section, commit. Done.",
+    body: `
+      <h2>Rollout per project</h2>
+      <div class="tagline">// README.md — four steps</div>
+      <ul>
+        <li><span class="rule-no">1.</span> Put all repos of the project under one root directory; drop <code>root-template/AGENTS.md</code> there and fill in the repo list.</li>
+        <li><span class="rule-no">2.</span> Copy the contents of <code>repo-template/</code> into <strong>each repo</strong> — including the hidden <code>.ai/</code> and <code>.claude/</code> folders — and commit.</li>
+        <li><span class="rule-no">3.</span> Fill each repo's <em>Project-Specific Rules</em> section in <code>AGENTS.md</code> (logging vendor, tenant model, UI direction, deviations).</li>
+        <li><span class="rule-no">4.</span> Spin up the agent from the root. It reads each repo's rules + memory and writes into the right repo.</li>
+      </ul>
+      <pre><code>repo-template/
+├── AGENTS.md                     <span class="c-comment"># rules + standards + project section</span>
+├── CLAUDE.md                     <span class="c-comment"># thin pointer to AGENTS.md</span>
+├── .ai/sessions/                 <span class="c-comment"># work history</span>
+├── .ai/decisions/                <span class="c-comment"># why, append-only</span>
+└── .claude/skills/repo-memory/   <span class="c-comment"># the skill that enforces it all</span></code></pre>`
+  },
+  {
+    id: "philosophy", cat: "SETUP", priority: false, path: "README.md › Why this exists",
+    title: "Why this exists",
+    summary: "Agents wake up with amnesia. Git says what changed — memory in the repo says why, what failed, and what's unfinished.",
+    body: `
+      <h2>Why this exists</h2>
+      <div class="tagline">// README.md › philosophy</div>
+      <p>AI agents write a lot of our code now, but they wake up with amnesia every session. Git history tells you <em>what</em> changed; it doesn't tell you <em>why</em> the organization wanted it, what was tried and rejected, or what was left unfinished last Tuesday.</p>
+      <p>So we keep the memory <strong>in the repo</strong>, next to the code it explains, versioned with it. Two kinds, deliberately separate: <strong>session memory</strong> (cheap, disposable context for the next agent) and <strong>decision history</strong> (the durable record of why the product behaves the way it does). Mixing them is how you end up with neither.</p>
+      <h3>Three constraints shaped the design</h3>
+      <ul>
+        <li><strong>Agents skim before they read</strong> — timestamps and summaries live in filenames.</li>
+        <li><strong>Parallel developers, one git repo</strong> — one file per session, append-only, near-zero merge conflicts.</li>
+        <li><strong>Rules nobody follows are decoration</strong> — this ships as a skill the agent executes, not a wiki page it ignores.</li>
+      </ul>`
+  }
+];
+
+const TREE = [
+  { label: "repo-template", children: [
+    { label: ".ai", children: [
+      { label: "decisions", children: [
+        { label: "README.md", doc: "decisions-readme" },
+      ]},
+      { label: "sessions", children: [
+        { label: "README.md", doc: "sessions-readme" },
+      ]},
+    ]},
+    { label: ".claude", children: [
+      { label: "skills", children: [
+        { label: "repo-memory", children: [
+          { label: "SKILL.md", doc: "skill-md" },
+        ]},
+      ]},
+    ]},
+    { label: "AGENTS.md", doc: "repo-agents" },
+    { label: "CLAUDE.md", doc: "repo-claude" },
+  ]},
+  { label: "root-template", children: [
+    { label: "AGENTS.md", doc: "root-agents" },
+  ]},
+  { label: "README.md", doc: "readme" },
+];
+
+/* DOCS: real markdown content injected at build time — do not edit by hand */
+const DOCS = {"repo-agents": {"name": "AGENTS.md", "path": "repo-template/AGENTS.md", "md": "# Mandatory Agent Rules\n\nThese rules apply to every agent working in this repository. They are mandatory unless the user explicitly overrides them for a specific task.\n\n## Highest Priority\n\nPlan first. No quick fix. Work as a single agent — do not use workers or sub-agents.\n\n- Treat this as the most important repository instruction for every run.\n- If any task request feels urgent, small, or obvious, still plan first before changing code.\n- Do not bypass this workflow unless the user explicitly says to ignore these repo rules for that specific task.\n\n## Read Memory First\n\nEvery session starts by reading repo memory before any planning or code work:\n\n1. Read `.ai/decisions/` — browse topic folders relevant to the task and read the decision files inside. This is where the \"why\" behind the codebase lives.\n2. Read `.ai/sessions/` — find recent session files in topic folders relevant to the task. This is the AI work history: what was done before, what's unfinished, what was tried and rejected.\n3. Only read what is relevant to the task. Do not load everything.\n\nThe full workflow for reading and writing these folders is in the `repo-memory` skill (`.claude/skills/repo-memory/SKILL.md`). Follow it in every session.\n\n## No Workers or Sub-Agents\n\n- Do not spin up worker agents, sub-agents, or parallel agent tasks for exploration, implementation, or review.\n- All work — codebase exploration, planning, implementation, verification — is done directly by the single agent in the main session.\n- This keeps the full context of the task in one place and every change reviewable in one thread.\n\n## Agent Role\n\n- The agent plans, brainstorms, coordinates with the user, implements, and reviews its own work.\n- The agent must ask clarifying questions as needed. It should not rush from an unclear request into implementation.\n\n## Planning and Approval Workflow\n\n- Before implementation, the agent must discuss the approach with the user and produce a concrete plan.\n- Implementation must not begin until the user approves the plan and explicitly asks the agent to proceed.\n- After approval, the agent must break the plan into ordered subtasks before any code changes start.\n- The agent must work through subtasks sequentially, completing and reviewing the current subtask before starting the next.\n\n## Code Quality Rules\n\n- Do not overcomplicate the codebase.\n- Do not use quick fixes, hacks, or brittle patches.\n- Do not optimize only for getting the latest bug fix or feature shipped.\n- Every change must align with the existing architecture, style, naming, and patterns of the repository.\n- Keep solutions clean, minimal, and maintainable.\n- Avoid unnecessary abstractions, high-level design patterns, framework churn, or broad refactors.\n- Prefer small, direct changes that reduce or preserve technical debt.\n- Be careful about side effects and regression risk. Consider how a change interacts with nearby code and existing behavior.\n- If the clean path is unclear, stop and ask questions during planning instead of guessing.\n\n## Verification\n\n- The agent must run the relevant checks (tests, type checks, lint, build) for each subtask when practical, and review the results before moving on.\n- If checks cannot be run, the agent must report that clearly and explain the remaining risk.\n\n## Memory Discipline\n\n- `.ai/sessions/` — AI work history. One new file per local session, always. Never append to a previous session's file.\n- `.ai/decisions/` — organizational decision history. High-level decisions and project logic only; the \"why\", never code detail.\n- Both folders are organized as one level of topic folders with one file per session inside. Reuse an existing topic folder if one matches; only create a new one if nothing fits.\n- Write the session file as you work and finalize it before the session ends. Record decisions the moment the user confirms them.\n- Never hallucinate. If a fact is not in memory, in a plan, or in code, ask the user.\n\n## Multi-Repo Projects\n\nThis repo may be one of several repos in a project (e.g. frontend, backend, super-admin frontend), checked out side by side under a root project directory. When the agent runs from that root:\n\n- Each repo keeps its own `AGENTS.md`, `CLAUDE.md`, and `.ai/` memory.\n- Session and decision files are written into the repo the work belongs to. Work spanning repos gets a session file in each affected repo.\n- Never write memory files at the root level.\n\n---\n\n# Engineering Standards\n\nOrganization-wide standards: TypeScript everywhere, Node backend, React + Vite frontend, MongoDB, zod for validation.\n\n## API Contract Is the Single Source of Truth\n\nApplies to every project with a frontend/backend split.\n\n- The canonical contract lives in the frontend repo under `contract/`. The frontend side owns it and edits it first.\n- The backend repo keeps a local mirror at `contract/`. It is byte-identical at each cutover, updated by hand-copying changed files from the frontend repo when implementing a contract change. The backend's own `CHANGELOG.md` is frozen as a historical record — do not append to it.\n- Backend imports the contract via relative paths from its local mirror (e.g. `import { exchange } from \"../../../contract/endpoints/auth.contract\"`). No npm linking, no shared contract package wrapper. The contract folder has no `package.json`.\n- Frontend reads the canonical folder via a Vite path alias `@contract` → `./contract` (local to the frontend repo). Neither deploy needs the other repo at build time, and the repos do not need to be cloned side-by-side.\n- Every API change starts by editing files under the frontend's `contract/` and appending an entry to the frontend's `contract/CHANGELOG.md` with status `needs-implementation`, the file changed, a summary, and the requesting side. That changelog is the live ledger for both sides.\n- The backend agent landing the implementation hand-copies the changed contract files into the backend's `contract/`, implements the change, and flips the entry in the frontend's `CHANGELOG.md` to `done`.\n- Backend zod validation imports schemas exclusively from its local `contract/` mirror — never re-defines request/response schemas in route files.\n\n## Code Organization\n\n- No JSON-driven workflow engines or config-defined business flows. Ever.\n- Business logic lives in plain TypeScript orchestrator files. Each action gets its own file under `modules/<feature>/actions/<actionName>.action.ts`. Reading the file top-to-bottom describes the workflow in English.\n- Helpers live as named exports on a static-style namespace object (e.g. `InvitationHelper.x()`), not class methods bound to `this`.\n- Duplication > premature reuse in the first iteration. Refactor only when ≥3 call sites genuinely share behavior.\n- No DI framework, no service container, no event bus. Plain imports.\n- Files stay small. If an action file passes ~250 lines, split it.\n\n## Persistence and Ops\n\n- **Soft delete only.** Every collection has a `deletedAt: Date | null`. Hard deletes require explicit user approval.\n- **Multi-tenant projects:** every collection carries the tenant key (e.g. `organizationId`) and indexes lead with `(organizationId, deletedAt, …)`.\n- **Structured logging** with separate datasets/streams per environment (`<project>-dev`, `<project>-prod`). Default level: `info` in prod, `debug` in dev. Every action runs inside a logging context carrying `{ requestId, userId, action }` (plus tenant id where applicable). The logging vendor is set per project in the project-specific rules.\n- **Encryption at rest:** all third-party credentials and API keys stored in the database are AES-256-GCM encrypted using a master key from env (`APP_ENCRYPTION_KEY`). Never store secrets in plaintext.\n- **Auth:** Firebase Auth on the client → custom JWT exchange on the backend. Token sent via `Authorization: Bearer …` header. Multi-tenant projects pass the active tenant per request via an `x-org-id` header.\n\n---\n\n# Project-Specific Rules\n\n<!--\nAdd rules specific to this project below: architecture decisions, logging vendor,\ntenant model, UI direction, deviations from the engineering standards, etc.\nThese sit on top of the mandatory rules and engineering standards above.\n-->\n\n(None yet.)\n"}, "repo-claude": {"name": "CLAUDE.md", "path": "repo-template/CLAUDE.md", "md": "# Repository Instructions\n\nRead and follow `AGENTS.md` in this repo. It is the single source of truth for all agent rules here — workflow, code quality, and memory discipline. Do not skip it.\n\nAlso follow the `repo-memory` skill (`.claude/skills/repo-memory/SKILL.md`) for reading and writing `.ai/sessions/` and `.ai/decisions/` in every session.\n"}, "sessions-readme": {"name": "README.md", "path": "repo-template/.ai/sessions/README.md", "md": "# Session Memory\n\nAI work history for this repo. One file per local session — this is how future agents (and humans) find out what was done, why, and what's still open.\n\n## Structure\n\n```\n.ai/sessions/<topic>/<YYYY-MM-DD-HHmm>--<feature-summary>.md\n```\n\n- `<topic>` — one level of folders, one per feature area (e.g. `auth/`, `billing/`, `onboarding/`). Reuse an existing folder if one matches; create a new one only if nothing fits. Lowercase, hyphenated.\n- `<feature-summary>` — 4–5 words describing what the session worked on, lowercase, hyphenated.\n\nExample: `.ai/sessions/billing/2026-07-06-1430--add-invoice-pdf-export.md`\n\n## Rules\n\n- **New session = new file.** Never append to a previous session's file, even for the same feature.\n- One file per session per repo. If a session touches multiple repos, each repo gets its own file covering its part.\n- Write during the session, finalize before it ends.\n\n## File template\n\n```markdown\n# <Feature summary>\n\n- **Date:** YYYY-MM-DD HH:mm\n- **Developer:** <name>\n- **Topic:** <topic folder>\n\n## Request\nWhat the user asked for, in one or two sentences.\n\n## What was done\nWhat changed, at the level of features and behavior. Mention key files/modules touched.\n\n## Notable findings\nNon-obvious things discovered about the codebase. Approaches tried and rejected, and why.\n\n## Open threads\nUnfinished work, known risks, follow-ups.\n```\n"}, "decisions-readme": {"name": "README.md", "path": "repo-template/.ai/decisions/README.md", "md": "# Organizational Decision History\n\nHigh-level decisions and project logic for this repo. The purpose is the **why**: so future AI agents and humans understand why a change was made, can discuss it, and can answer questions from it.\n\nThis is not a technical changelog. Code detail lives in git history and session memory.\n\n## Structure\n\n```\n.ai/decisions/<topic>/<YYYY-MM-DD>--<short-decision-title>.md\n```\n\n- `<topic>` — one level of folders, one per feature area (e.g. `pricing/`, `auth/`, `notifications/`). Reuse an existing folder if one matches; create a new one only if nothing fits. Lowercase, hyphenated.\n- One file per working session per topic. Multiple decisions confirmed in the same session on the same topic go in the same file. This keeps git conflicts near zero when several developers work in parallel.\n\nExample: `.ai/decisions/pricing/2026-07-06--annual-plan-discount-change.md`\n\n## Rules\n\n- **Append-only history.** Never edit or delete past decision files. If a decision is reversed, write a new file that references the old one.\n- Record only user/stakeholder-confirmed decisions — never the agent's own assumptions.\n- Record the decision the moment it is confirmed, not at session end.\n\n## File template\n\n```markdown\n# <Short decision title>\n\n- **Date:** YYYY-MM-DD\n- **Decided by:** <who confirmed it>\n- **Topic:** <topic folder>\n\n## Decision\nWhat was decided, in plain language.\n\n## Why\nThe reasoning: organizational context, constraints, trade-offs considered.\n\n## Supersedes / relates to\nLinks to earlier decision files this changes or builds on, if any.\n```\n"}, "skill-md": {"name": "SKILL.md", "path": "repo-template/.claude/skills/repo-memory/SKILL.md", "md": "---\nname: repo-memory\ndescription: Read and update this repo's session memory (.ai/sessions/) and organizational decision history (.ai/decisions/). Use at the start of EVERY session to load context, whenever the user confirms a decision, and before ending a session to record work history. Triggers: starting any task in this repo, \"why was this done\", \"what did we decide\", \"record this decision\", finishing a work session.\n---\n\n# Repo Memory\n\nThis repo keeps its AI memory in `.ai/`:\n\n- `.ai/sessions/` — AI work history: what was done, when, and what's open.\n- `.ai/decisions/` — organizational decision history: the **why** behind changes.\n\nBoth use one level of topic folders with one file per session inside. See the README in each folder for the file templates.\n\n## At session start (always)\n\n1. Identify the topic(s) the task touches.\n2. List folders in `.ai/decisions/` and `.ai/sessions/`. Read files in matching topic folders — decisions first (the why), then the 2–3 most recent session files (the recent history). Skim filenames; timestamps and feature summaries are in the names for exactly this reason.\n3. Do not load unrelated topics. Keep context lean.\n4. Create the session file for this session **now**:\n   `.ai/sessions/<topic>/<YYYY-MM-DD-HHmm>--<feature-summary>.md`\n   - Get the real timestamp from the system (`date +%Y-%m-%d-%H%M`) — never guess it.\n   - `<feature-summary>` = 4–5 words, lowercase, hyphenated, describing the feature being worked on.\n   - **New session = new file, always.** Never append to a previous session's file, even for the same feature.\n   - Reuse an existing topic folder if one reasonably matches (check for near-duplicates like `auth` vs `authentication` before creating a new folder).\n\n## During the session\n\n- Update the session file as significant work lands: what was done, notable findings, approaches rejected and why.\n- The moment the user confirms a decision, write it to\n  `.ai/decisions/<topic>/<YYYY-MM-DD>--<short-decision-title>.md` using the template in `.ai/decisions/README.md`.\n  - If a decision file for this session and topic already exists, append the new decision to that same file (one file per session per topic).\n  - Decision language only. The what and the why — no code detail.\n  - Only confirmed decisions. Never record the agent's own assumptions as decisions.\n  - Append-only history: never edit or delete past decision files. A reversal is a new file referencing the old one.\n\n## Before the session ends\n\n1. Finalize the session file: request, what was done, key files/modules touched, open threads.\n2. Confirm every user-confirmed decision from this session has a decision file entry.\n\n## Multi-repo projects\n\nWhen running from a root project directory containing several repos (frontend, backend, super-admin, etc.):\n\n- Write memory into the `.ai/` of the repo the work belongs to.\n- Work spanning repos → one session file **per affected repo**, each covering that repo's part.\n- A decision goes in the repo it primarily governs; if it genuinely spans repos, record it in each affected repo.\n- Never write memory files at the root level.\n\n## Answering \"why\" questions\n\nWhen the user asks why something works the way it does, or what was decided historically: search `.ai/decisions/` (folder and file names first, then contents) before reading code or answering from general knowledge. If the answer isn't in decisions, sessions, or code — say so and ask; never invent history.\n"}, "root-agents": {"name": "AGENTS.md", "path": "root-template/AGENTS.md", "md": "# Root Project Directory — Agent Rules\n\nThis directory is the local root for one project. Each subdirectory is a separate git repo (e.g. `frontend/`, `backend/`, `superadmin-frontend/`). Agents are spun up from here so they can work across all repos of the project.\n\n## Rules\n\n- Each repo has its own `AGENTS.md` and `CLAUDE.md`. Before touching a repo, read that repo's `AGENTS.md` and follow it — the rules there are mandatory.\n- Each repo has its own `.ai/` memory (`.ai/sessions/` and `.ai/decisions/`). Follow each repo's `repo-memory` skill (`.claude/skills/repo-memory/SKILL.md`).\n- Session and decision files are written inside the repo the work belongs to. Work spanning repos gets a session file in each affected repo.\n- Never write memory files, code, or config at this root level. This directory holds repos, nothing else.\n- Git operations (branch, commit) happen per repo, inside that repo.\n\n## Repos in this project\n\n<!-- List the repos and what each one is, e.g.:\n- `frontend/` — customer-facing web app\n- `backend/` — API server\n- `superadmin-frontend/` — internal admin panel\n-->\n"}, "readme": {"name": "README.md", "path": "README.md", "md": "# Agent Rules — Project Setup\n\nStandard AI-agent setup for all organization repos. No BS: rules in `AGENTS.md`, memory in `.ai/`, one skill that teaches agents how to use it.\n\n## Why this exists\n\nAI agents write a lot of our code now, but they wake up with amnesia every session. Git history tells you *what* changed; it doesn't tell you *why* the organization wanted it, what was tried and rejected, or what was left unfinished last Tuesday. Without that, every session restarts from zero: the agent re-explores the codebase, re-asks answered questions, and occasionally re-litigates decisions we already made.\n\nSo we keep the memory in the repo, next to the code it explains, versioned with it. Two kinds, deliberately separate: **session memory** (work history — cheap, disposable context for the next agent) and **decision history** (organizational reasoning — the durable record of why the product behaves the way it does). Mixing them is how you end up with neither.\n\nThe rest of the design falls out of three constraints:\n\n- **Agents skim before they read.** Timestamps and feature summaries live in filenames so an agent can find relevant context by listing a folder, without loading everything.\n- **Parallel developers, one git repo.** One level of topic folders, one file per session, append-only. Nobody edits a shared file, so merge conflicts on memory are near zero.\n- **Rules nobody follows are decoration.** That's why this ships as a skill, not a wiki page — the agent is instructed to read and write memory as part of every session, not asked nicely.\n\nAnd plan-first, always, with a single agent doing the work end to end — because the expensive failure mode of agentic coding isn't slow work, it's confident quick fixes that quietly fight the architecture.\n\n## What's here\n\n```\nrepo-template/          → copy into EVERY repo\n├── AGENTS.md           # mandatory agent rules + project-specific placeholder\n├── CLAUDE.md           # thin pointer to AGENTS.md\n├── .ai/\n│   ├── sessions/       # AI work history — one topic folder level, one file per session\n│   └── decisions/      # organizational decision history — same structure, append-only\n└── .claude/skills/repo-memory/\n    └── SKILL.md        # teaches agents to read/write .ai/ every session\n\nroot-template/          → copy into the LOCAL root project directory\n└── AGENTS.md           # multi-repo rules; list your repos at the bottom\n\nrules-site/             → presentation web app (single index.html, host anywhere)\n```\n\n## Rollout per project\n\n1. On your machine, keep all repos of a project under one root directory:\n\n   ```\n   my-project/\n   ├── AGENTS.md            ← from root-template/ (fill in the repo list)\n   ├── frontend/\n   ├── backend/\n   └── superadmin-frontend/\n   ```\n\n2. Copy the contents of `repo-template/` into each repo (including the hidden `.ai/` and `.claude/` folders) and commit.\n3. In each repo's `AGENTS.md`, fill in the \"Project-Specific Rules\" section (or leave \"(None yet.)\").\n4. Spin up the agent from the root directory so it can reach every repo. It reads each repo's rules and memory, and writes session/decision files into the right repo.\n\n## The two memory folders, in one breath\n\n- `.ai/sessions/<topic>/<YYYY-MM-DD-HHmm>--<4-5-word-feature-summary>.md` — new file every session, never append to old ones. What was done + open threads.\n- `.ai/decisions/<topic>/<YYYY-MM-DD>--<short-title>.md` — one file per session per topic, append-only history. Decisions and the why — no code detail.\n\nTopic folders are one level deep and shared conventions: reuse before creating (`auth`, not `auth` + `authentication`). One file per session is what keeps git conflicts near zero across parallel developers.\n"}};
+
+const GROUPS = [
+  { key: "MANDATORY", label: "// mandatory — every agent, every run", filter: r => r.cat === "MANDATORY" || (r.cat === "MEMORY" && r.priority) },
+  { key: "MEMORY", label: "// the memory system", filter: r => r.cat === "MEMORY" && !r.priority },
+  { key: "STANDARD", label: "// engineering standards", filter: r => r.cat === "STANDARD" },
+  { key: "SETUP", label: "// setup & philosophy", filter: r => r.cat === "SETUP" },
+];
+
+const badgeClass = { MANDATORY: "b-mandatory", MEMORY: "b-memory", STANDARD: "b-standard", SETUP: "b-setup" };
+
+/* ---------- render cards ---------- */
+const cardsRoot = document.getElementById("cards-root");
+GROUPS.forEach(g => {
+  const items = RULES.filter(g.filter);
+  if (!items.length) return;
+  const label = document.createElement("div");
+  label.className = "section-label"; label.textContent = g.label;
+  cardsRoot.appendChild(label);
+  const grid = document.createElement("div"); grid.className = "cards";
+  items.forEach(r => {
+    const c = document.createElement("div");
+    c.className = "card" + (r.priority ? " priority" : "");
+    c.innerHTML = `<span class="open-hint">⤢ open</span>
+      <span class="badge ${badgeClass[r.cat]}">${r.cat}</span>
+      <h2>${r.title}</h2><p>${r.summary}</p>`;
+    c.onclick = () => openModal(r.id);
+    grid.appendChild(c);
+  });
+  cardsRoot.appendChild(grid);
+});
+document.getElementById("rule-count").textContent = `✓ ${RULES.length} rules`;
+
+/* ---------- render tree (recursive, VSCode-style nesting) ---------- */
+const treeRoot = document.getElementById("tree");
+function renderTree(nodes, container, depth) {
+  nodes.forEach(node => {
+    const indent = 8 + depth * 14;
+    if (node.children) {
+      const group = document.createElement("div"); group.className = "tree-group";
+      const head = document.createElement("div"); head.className = "tree-item";
+      head.style.paddingLeft = indent + "px";
+      head.innerHTML = `<span class="chev">▾</span><span class="icon">📁</span><span>${node.label}</span>`;
+      head.onclick = () => {
+        group.classList.toggle("collapsed");
+        const collapsed = group.classList.contains("collapsed");
+        head.querySelector(".chev").textContent = collapsed ? "▸" : "▾";
+        head.querySelector(".icon").textContent = collapsed ? "📁" : "📂";
+      };
+      head.querySelector(".icon").textContent = "📂";
+      group.appendChild(head);
+      const kids = document.createElement("div"); kids.className = "tree-children";
+      renderTree(node.children, kids, depth + 1);
+      group.appendChild(kids);
+      container.appendChild(group);
+    } else {
+      const it = document.createElement("div"); it.className = "tree-item";
+      it.style.paddingLeft = (indent + 16) + "px";
+      it.innerHTML = `<span class="icon">📄</span><span>${node.label}</span>`;
+      it.onclick = () => { openDoc(node.doc); markTree(it); };
+      container.appendChild(it);
+    }
+  });
+}
+renderTree(TREE, treeRoot, 0);
+function markTree(el) {
+  document.querySelectorAll(".tree-item.selected").forEach(x => x.classList.remove("selected"));
+  el.classList.add("selected");
+}
+
+/* ---------- tabs ---------- */
+let openTabs = [{ id: "welcome" }];
+let activeTab = "welcome";
+
+function tabMeta(id) {
+  if (id === "welcome") return { name: "WELCOME.md", crumbs: ["agent-rules", "WELCOME.md"] };
+  const d = DOCS[id];
+  return { name: d.name, crumbs: ["agent-rules", ...d.path.split("/")] };
+}
+function renderTabs() {
+  const bar = document.getElementById("tabs");
+  bar.innerHTML = "";
+  openTabs.forEach(t => {
+    const m = tabMeta(t.id);
+    const el = document.createElement("div");
+    el.className = "tab" + (t.id === activeTab ? " active" : "");
+    el.innerHTML = t.id === "welcome"
+      ? `<span>${m.name}</span><span class="dot">●</span>`
+      : `<span class="mdicon">M↓</span><span>${m.name}</span><span class="close" title="Close">✕</span>`;
+    el.onclick = e => {
+      if (e.target.classList.contains("close")) { closeTab(t.id); return; }
+      activateTab(t.id);
+    };
+    bar.appendChild(el);
+  });
+  const m = tabMeta(activeTab);
+  document.getElementById("breadcrumbs").innerHTML =
+    m.crumbs.map((c, i, a) => i === a.length - 1 ? `<span style="color:var(--fg)">${c}</span>` : c)
+      .join(' <span class="sep">›</span> ');
+}
+function activateTab(id) {
+  activeTab = id;
+  const welcome = document.getElementById("view-welcome");
+  const doc = document.getElementById("view-doc");
+  if (id === "welcome") { welcome.style.display = ""; doc.style.display = "none"; }
+  else {
+    welcome.style.display = "none"; doc.style.display = "";
+    doc.innerHTML = renderMD(DOCS[id].md);
+    doc.closest(".editor").scrollTop = 0;
+  }
+  renderTabs();
+}
+function openDoc(id) {
+  if (!DOCS[id]) return;
+  if (!openTabs.find(t => t.id === id)) openTabs.push({ id });
+  activateTab(id);
+}
+function closeTab(id) {
+  openTabs = openTabs.filter(t => t.id !== id);
+  if (activeTab === id) activateTab(openTabs[openTabs.length - 1].id);
+  else renderTabs();
+}
+renderTabs();
+
+/* ---------- tiny markdown renderer (headings, lists, code, comments) ---------- */
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, (_, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:]|$)/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" style="color:var(--accent)">$1</a>');
+}
+function renderMD(md) {
+  const lines = md.split("\n");
+  let html = "", i = 0, listStack = null;
+  const closeList = () => { if (listStack) { html += `</${listStack}>`; listStack = null; } };
+
+  // YAML frontmatter
+  if (lines[0] === "---") {
+    const end = lines.indexOf("---", 1);
+    if (end > 0) {
+      html += `<pre class="frontmatter"><code>${esc(lines.slice(1, end).join("\n"))}</code></pre>`;
+      i = end + 1;
+    }
+  }
+  for (; i < lines.length; i++) {
+    let line = lines[i];
+    // fenced code
+    if (line.trimStart().startsWith("```")) {
+      closeList();
+      const buf = [];
+      for (i++; i < lines.length && !lines[i].trimStart().startsWith("```"); i++) buf.push(lines[i]);
+      html += `<pre><code>${esc(buf.join("\n"))}</code></pre>`;
+      continue;
+    }
+    // html comments (possibly multi-line)
+    if (line.trimStart().startsWith("<!--")) {
+      closeList();
+      const buf = [line];
+      while (!lines[i].includes("-->") && i < lines.length - 1) { i++; buf.push(lines[i]); }
+      html += `<span class="md-comment">${esc(buf.join("\n"))}</span>`;
+      continue;
+    }
+    // hr
+    if (/^\s*(---+|\*\*\*+)\s*$/.test(line)) { closeList(); html += "<hr>"; continue; }
+    // headings
+    const h = line.match(/^(#{1,4})\s+(.*)/);
+    if (h) { closeList(); const l = h[1].length; html += `<h${l}>${inline(h[2])}</h${l}>`; continue; }
+    // list items
+    const ul = line.match(/^\s*[-*]\s+(.*)/);
+    const ol = line.match(/^\s*\d+\.\s+(.*)/);
+    if (ul || ol) {
+      const want = ul ? "ul" : "ol";
+      if (listStack !== want) { closeList(); html += `<${want}>`; listStack = want; }
+      html += `<li>${inline((ul || ol)[1])}</li>`;
+      continue;
+    }
+    // blank
+    if (!line.trim()) { closeList(); continue; }
+    // paragraph (strip raw img tags — assets live outside this site)
+    if (line.trimStart().startsWith("<img")) continue;
+    closeList();
+    html += `<p>${inline(line)}</p>`;
+  }
+  closeList();
+  return html;
+}
+
+/* ---------- modal ---------- */
+function openModal(id) {
+  const r = RULES.find(x => x.id === id); if (!r) return;
+  document.getElementById("modal-path").innerHTML =
+    r.path.split("›").map((p, i, a) => i === a.length - 1 ? `<span class="file">${p.trim()}</span>` : p.trim()).join(" › ");
+  document.getElementById("modal-body").innerHTML = r.body;
+  document.getElementById("overlay").classList.add("open");
+  document.querySelector(".modal-body").scrollTop = 0;
+}
+function closeModal() { document.getElementById("overlay").classList.remove("open"); }
+
+/* ---------- quick open ---------- */
+const qo = document.getElementById("quickopen");
+const qoInput = document.getElementById("qo-input");
+const qoResults = document.getElementById("qo-results");
+let qoSel = 0;
+
+function openQuickOpen() { qo.classList.add("open"); qoInput.value = ""; renderQO(""); qoInput.focus(); }
+function closeQuickOpen() { qo.classList.remove("open"); }
+function renderQO(q) {
+  const query = q.toLowerCase();
+  const matches = RULES.filter(r =>
+    (r.title + " " + r.summary + " " + r.cat + " " + r.path).toLowerCase().includes(query));
+  qoSel = 0;
+  qoResults.innerHTML = matches.map((r, i) =>
+    `<div class="qo-item${i === 0 ? " sel" : ""}" data-id="${r.id}">
+       <span class="qo-title">${r.title}</span><span class="qo-cat">${r.cat}</span></div>`).join("") ||
+    `<div class="qo-item"><span class="qo-title" style="color:var(--fg-faint)">no results</span></div>`;
+  qoResults.querySelectorAll(".qo-item[data-id]").forEach(el =>
+    el.onclick = () => { closeQuickOpen(); openModal(el.dataset.id); });
+}
+qoInput.addEventListener("input", e => renderQO(e.target.value));
+qoInput.addEventListener("keydown", e => {
+  const items = [...qoResults.querySelectorAll(".qo-item[data-id]")];
+  if (e.key === "ArrowDown") { e.preventDefault(); qoSel = Math.min(qoSel + 1, items.length - 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); qoSel = Math.max(qoSel - 1, 0); }
+  else if (e.key === "Enter" && items[qoSel]) { closeQuickOpen(); openModal(items[qoSel].dataset.id); return; }
+  else return;
+  items.forEach((el, i) => el.classList.toggle("sel", i === qoSel));
+  if (items[qoSel]) items[qoSel].scrollIntoView({ block: "nearest" });
+});
+
+/* ---------- theme ---------- */
+function applyTheme(t) {
+  document.body.dataset.theme = t;
+  document.getElementById("theme-label").textContent = t === "dark" ? "Dark+ (default)" : "Light+ (default)";
+  try { localStorage.setItem("dex-rules-theme", t); } catch (e) {}
+}
+function toggleTheme() { applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark"); }
+try { const saved = localStorage.getItem("dex-rules-theme"); if (saved) applyTheme(saved); } catch (e) {}
+
+/* ---------- sidebar toggle ---------- */
+function toggleSidebar() {
+  const s = document.getElementById("sidebar");
+  s.style.display = s.style.display === "none" ? "flex" : "none";
+}
+
+/* ---------- global keys ---------- */
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "p")) { e.preventDefault(); openQuickOpen(); }
+  else if (e.key === "Escape") { closeQuickOpen(); closeModal(); }
+});
+</script>
+</body>
+</html>

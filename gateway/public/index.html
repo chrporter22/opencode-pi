@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>opencode-pi — Control Center</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --fg: #cccccc; --dim: #9d9d9d; --faint: #6e6e6e;
+    --accent: #569cd6; --ok: #28c840; --err: #f48771; --border: #3c3c3c;
+    --card: #252526; --input: #3c3c3c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    background: var(--bg); color: var(--fg); font-size: 14px; min-height: 100vh;
+    padding: 24px;
+  }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); display: inline-block; }
+  .dot.ok { background: var(--ok); }
+  .dot.err { background: var(--err); }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; max-width: 640px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); margin-bottom: 12px; }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; }
+  .row .k { color: var(--dim); }
+  input {
+    background: var(--input); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; font-size: 13px; width: 100%;
+  }
+  button {
+    background: var(--accent); color: #1e1e1e; border: none; border-radius: 6px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; margin-right: 8px;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .progress { height: 8px; background: var(--input); border-radius: 4px; margin: 10px 0; overflow: hidden; }
+  .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  pre {
+    font-family: "SF Mono", Monaco, Consolas, monospace; font-size: 12px;
+    color: var(--dim); white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <span class="dot" id="statusDot"></span>
+    <h1>opencode-pi</h1>
+    <span style="color:var(--faint);font-size:13px">Control center</span>
+  </header>
+
+  <div class="card">
+    <h2>Connection</h2>
+    <input type="password" id="key" placeholder="Admin API key" autocomplete="off">
+  </div>
+
+  <div class="card">
+    <h2>Model</h2>
+    <div class="row"><span class="k">name</span><span id="mName">—</span></div>
+    <div class="row"><span class="k">quantization</span><span id="mQuant">—</span></div>
+    <div class="row"><span class="k">status</span><span id="mStatus">—</span></div>
+    <div class="row"><span class="k">installed</span><span id="mInstalled">—</span></div>
+    <div class="row"><span class="k">size</span><span id="mSize">—</span></div>
+    <div class="row"><span class="k">installed at</span><span id="mAt">—</span></div>
+    <div class="row"><span class="k">tokens/sec</span><span id="mTps">—</span></div>
+    <div class="progress" id="progressWrap" style="display:none"><div id="progressBar"></div></div>
+    <pre id="modelLog" style="display:none"></pre>
+    <div style="height:12px"></div>
+    <button id="btnRestart">Restart model</button>
+    <button id="btnUpdate">Update model</button>
+  </div>
+
+  <div class="card">
+    <h2>Realtime events</h2>
+    <pre id="events"></pre>
+  </div>
+
+<script>
+  const dot = document.getElementById("statusDot");
+  const keyInput = document.getElementById("key");
+  const q = (id) => document.getElementById(id);
+  const $s = (id, v) => (q(id).textContent = v);
+
+  function headers() {
+    const key = keyInput.value || localStorage.getItem("adminKey");
+    if (!key) return null;
+    return { "x-api-key": key };
+  }
+  function fmtBytes(n) {
+    if (n == null) return "—";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
+    if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(0) + " MB";
+    return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
+  }
+
+  async function refresh() {
+    try {
+      const h = await (await fetch("/health")).json();
+      dot.className = "dot ok";
+      const hdrs = headers();
+      if (hdrs) {
+        const s = await fetch("/api/status", { headers: hdrs });
+        const st = await s.json();
+        $s("mStatus", JSON.stringify({ gateway: st.gateway, llama: st.llama, model: st.model, loaded: st.modelLoaded }));
+        const m = await (await fetch("/api/model", { headers: hdrs })).json();
+        $s("mName", m.name);
+        $s("mQuant", m.quantization ?? "—");
+        $s("mInstalled", String(m.installed));
+        $s("mSize", fmtBytes(m.sizeBytes));
+        $s("mAt", m.installedAt ?? "—");
+        if (m.loadingStatus === "loading" || m.loadingStatus === "error") {
+          q("progressWrap").style.display = "block";
+        } else {
+          q("progressWrap").style.display = "none";
+        }
+        const sys = await (await fetch("/api/system", { headers: hdrs })).json();
+        $s("mTps", sys.tokensPerSecond != null ? sys.tokensPerSecond.toFixed(1) : "—");
+      } else {
+        $s("mStatus", "enter admin key");
+      }
+    } catch (e) {
+      dot.className = "dot err";
+      $s("mStatus", "health: " + e.message);
+    }
+  }
+
+  async function act(path, btn) {
+    const hdrs = headers();
+    if (!hdrs) return;
+    btn.disabled = true;
+    try {
+      const r = await fetch(path, { method: "POST", headers: hdrs });
+      const body = await r.json();
+      q("modelLog").style.display = "block";
+      q("modelLog").textContent = path + " -> HTTP " + r.status + ": " + JSON.stringify(body);
+    } finally {
+      btn.disabled = false;
+      refresh();
+    }
+  }
+  q("btnRestart").addEventListener("click", () => act("/api/model/restart", q("btnRestart")));
+  q("btnUpdate").addEventListener("click", () => act("/api/model/update", q("btnUpdate")));
+
+  function parseLogLine(msg) {
+    const m = /Model download: (\d+)%/.exec(msg);
+    if (m) {
+      q("progressWrap").style.display = "block";
+      q("progressBar").style.width = m[1] + "%";
+    }
+    if (/Model update complete|Installed model/.test(msg)) {
+      const bar = q("progressBar");
+      bar.style.width = "100%";
+      setTimeout(() => { q("progressWrap").style.display = "none"; bar.style.width = "0%"; }, 1500);
+    }
+  }
+
+  function connectWs(key) {
+    if (!key) return;
+    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?key=${encodeURIComponent(key)}`);
+    ws.onmessage = (ev) => {
+      const line = new Date().toLocaleTimeString() + "  " + ev.data.slice(0, 400);
+      q("events").textContent = (q("events").textContent ? line + "\n" : "") + line;
+      try {
+        const obj = JSON.parse(ev.data);
+        if (obj.message) parseLogLine(obj.message);
+        if (obj.type === "model.status") refresh();
+        if (obj.type === "llama.status" || obj.type === "gateway.status") refresh();
+      } catch {}
+    };
+    ws.onerror = () => { dot.className = "dot err"; };
+    ws.onclose = () => { dot.className = "dot err"; };
+  }
+
+  keyInput.addEventListener("change", () => {
+    localStorage.setItem("adminKey", keyInput.value);
+    refresh();
+    connectWs(keyInput.value);
+  });
+
+  setInterval(refresh, 5000);
+  refresh();
+</script>
+</body>
+</html>
