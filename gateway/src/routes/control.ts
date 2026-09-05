@@ -80,6 +80,7 @@ export function controlRouter(deps: ControlDeps): Router {
       temperature: s.temperature,
       disk: s.disk,
       tokensPerSecond: s.tokensPerSecond,
+      requestsPerMinute: deps.requests.requestsPerMinute(),
     });
   });
 
@@ -91,6 +92,7 @@ export function controlRouter(deps: ControlDeps): Router {
       memory: s.memory,
       temperature: s.temperature,
       tokensPerSecond: s.tokensPerSecond,
+      requestsPerMinute: deps.requests.requestsPerMinute(),
     });
   });
 

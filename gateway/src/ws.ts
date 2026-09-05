@@ -75,6 +75,7 @@ export function startWsServer(opts: WsServerOptions): WsServer {
       memory: snapshot.memory,
       temperature: snapshot.temperature,
       tokensPerSecond: snapshot.tokensPerSecond,
+      requestsPerMinute: opts.requests.requestsPerMinute(),
     });
   };
 

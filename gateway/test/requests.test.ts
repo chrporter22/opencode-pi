@@ -6,7 +6,7 @@ import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RuntimeState } from "../src/state.js";
 import { createLogger } from "../src/logger.js";
-import { createRequestTracker } from "../src/requests.js";
+import { createRequestTracker, countRequestRate } from "../src/requests.js";
 import { v1Router } from "../src/routes/v1.js";
 import { makeConfig } from "./helpers.js";
 
@@ -88,6 +88,19 @@ async function waitUntil(fn: () => boolean, timeoutMs = 1500): Promise<void> {
     await new Promise((r) => setTimeout(r, 10));
   }
 }
+
+describe("countRequestRate", () => {
+  it("counts starts within the rolling window", () => {
+    const now = 1_000_000;
+    const starts = [now - 59_000, now - 40_000, now - 61_000, now - 5_000];
+    expect(countRequestRate(starts, now)).toBe(3);
+  });
+
+  it("returns zero when no starts fall in the window", () => {
+    const now = 1_000_000;
+    expect(countRequestRate([now - 120_000, now - 61_000], now)).toBe(0);
+  });
+});
 
 describe("request tracking via the v1 proxy", () => {
   it("records completed streaming requests with usage and tok/s", async () => {

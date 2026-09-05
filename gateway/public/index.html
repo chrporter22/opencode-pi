@@ -36,9 +36,20 @@
   .dot.err { background: var(--err); }
   .card {
     background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-    padding: 16px; max-width: 640px; margin-bottom: 16px;
+    padding: 16px; min-width: 0;
   }
-  .card.wide { max-width: 860px; }
+  .dashboard { display: grid; gap: 16px; max-width: 1200px; margin: 0 auto; grid-template-columns: 1fr; align-items: start; }
+  @media (min-width: 1024px) {
+    .dashboard { grid-template-columns: repeat(3, 1fr); }
+    .card.streams-card { grid-column: span 2; }
+    .card.events-card { grid-column: 1 / -1; }
+  }
+  .table-scroll { overflow-x: auto; }
+  table.stats { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+  table.stats td { padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.stats td.k { color: var(--dim); }
+  table.stats td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.stats td.dim { color: var(--faint); }
   .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); margin-bottom: 12px; }
   .row {
     display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline;
@@ -63,6 +74,7 @@
   .chip.ok { color: var(--ok); }
   .chip.err { color: var(--err); }
   .chip.warn { color: var(--viridis-4); }
+  .chip.clk { cursor: pointer; text-decoration: underline dotted; }
   .progress { height: 8px; background: var(--input); border-radius: 4px; margin: 10px 0; overflow: hidden; }
   .progress > div { height: 100%; background: var(--progress-inner); width: 0; transition: width .3s; }
   pre {
@@ -72,11 +84,28 @@
   table.streams { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
   table.streams th, table.streams td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.streams th { color: var(--dim); font-weight: 500; }
+  table.streams td:last-child { padding-right: 0; }
   table.streams td.num { font-variant-numeric: tabular-nums; }
   table.streams td.dim { color: var(--faint); }
   .t1 { color: var(--viridis-1); } .t2 { color: var(--viridis-2); }
   .t3 { color: var(--viridis-3); } .t4 { color: var(--viridis-4); }
   .conv { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+  .log {
+    font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    max-height: 240px; overflow-y: auto; padding: 8px;
+    background: #1b1b1b; border: 1px solid var(--border); border-radius: 6px; color: var(--dim);
+  }
+  .log .evt { padding: 1px 0; word-break: break-all; }
+  .log .t { color: var(--faint); margin-right: 6px; flex-shrink: 0; }
+  .log .tag { display: inline-block; min-width: 16px; margin-right: 8px; }
+  .log .tag.err { color: var(--err); }
+  .log .tag.ok { color: var(--ok); }
+  .log .tag.warn { color: var(--viridis-4); }
+  .log .tag.info { color: var(--accent); }
+  .log .tag.sys { color: var(--faint); }
+  .log .tag.dim { color: var(--faint); }
+  .log .msg { color: var(--fg); }
+  table.streams .errDetail td { color: var(--err); border-bottom: none; }
   .msg {
     max-width: 80%; padding: 8px 12px; border-radius: 10px;
     white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.45;
@@ -95,10 +124,26 @@
     <button id="btnTheme">Theme: Dark</button>
   </header>
 
+  <main class="dashboard">
   <div class="card">
     <h2>Connection</h2>
     <input type="password" id="key" placeholder="Admin API key" autocomplete="off">
     <input type="password" id="iKey" placeholder="Inference API key (playground)" autocomplete="off">
+  </div>
+
+  <div class="card">
+    <h2>System</h2>
+    <table class="stats">
+      <tbody>
+        <tr><td class="k">CPU</td><td class="num" id="sCpu">—</td></tr>
+        <tr><td class="k">Memory</td><td class="num" id="sMem">—</td></tr>
+        <tr><td class="k">Temperature</td><td class="num" id="sTemp">—</td></tr>
+        <tr><td class="k">Disk used</td><td class="num" id="sDisk">—</td></tr>
+        <tr><td class="k">API calls/min</td><td class="num" id="sApm">—</td></tr>
+        <tr><td class="k">Token rate</td><td class="num" id="sTps">—</td></tr>
+        <tr><td class="k">Sample</td><td class="num dim" id="sAt">—</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="card">
@@ -111,7 +156,6 @@
     <div class="row"><span class="k">installed</span><span id="mInstalled">—</span></div>
     <div class="row"><span class="k">size</span><span id="mSize">—</span></div>
     <div class="row"><span class="k">installed at</span><span id="mAt">—</span></div>
-    <div class="row"><span class="k">tokens/sec</span><span id="mTps">—</span></div>
     <div class="progress" id="progressWrap" style="display:none"><div id="progressBar"></div></div>
     <pre id="modelLog" style="display:none"></pre>
     <div style="height:12px"></div>
@@ -119,18 +163,20 @@
     <button id="btnUpdate">Update model</button>
   </div>
 
-  <div class="card wide">
+  <div class="card streams-card">
     <h2>Inference streams <span id="streamCount" class="chip" style="margin-left:6px">0 active</span></h2>
+    <div class="table-scroll">
     <table class="streams">
       <thead>
         <tr><th>Time</th><th>Request</th><th>Status</th><th>Tokens P/C/T</th><th>tok/s</th><th>Duration</th></tr>
       </thead>
       <tbody id="streamRows"></tbody>
     </table>
+    </div>
     <div id="streamEmpty" style="color:var(--faint);font-size:13px;padding:8px 0">No inference requests yet.</div>
   </div>
 
-  <div class="card wide">
+  <div class="card">
     <h2>Playground</h2>
     <div class="conv" id="convo">
       <div class="msg assistant hint" id="convHint">Send a message to start a conversation through /v1/chat/completions.</div>
@@ -142,10 +188,11 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>Realtime events</h2>
-    <pre id="events"></pre>
+  <div class="card events-card">
+    <h2>Realtime events <button id="btnClearLog" style="float:right">Clear</button></h2>
+    <div class="log" id="log"></div>
   </div>
+  </main>
 
 <script>
   const dot = document.getElementById("statusDot");
@@ -193,6 +240,37 @@
     else if (v !== "—") el.classList.add("warn");
   }
 
+  function loadRank(v) {
+    if (v == null) return "";
+    if (v < 50) return "";
+    if (v < 70) return "t1";
+    if (v < 85) return "t3";
+    return "t4";
+  }
+  const sysState = {};
+  function renderSystem(s) {
+    Object.assign(sysState, s);
+    const setPct = (id, v) => {
+      const el = q(id);
+      if (v == null) {
+        el.textContent = "—";
+        el.className = "num";
+        return;
+      }
+      const rank = loadRank(v);
+      el.textContent = v.toFixed(1) + "%";
+      el.className = "num" + (rank ? " " + rank : "");
+    };
+    setPct("sCpu", sysState.cpu);
+    setPct("sMem", sysState.memory);
+    q("sTemp").textContent = sysState.temperature != null ? sysState.temperature.toFixed(1) + "°C" : "—";
+    const disk = sysState.disk;
+    q("sDisk").textContent = disk && disk.usedPercent != null ? disk.usedPercent.toFixed(1) + "%" : "—";
+    q("sTps").textContent = sysState.tokensPerSecond != null ? sysState.tokensPerSecond.toFixed(1) : "—";
+    q("sApm").textContent = sysState.requestsPerMinute != null ? String(sysState.requestsPerMinute) : "—";
+    q("sAt").textContent = sysState.timestamp ? new Date(sysState.timestamp).toLocaleTimeString() : "—";
+  }
+
   async function refresh() {
     try {
       await fetch("/health");
@@ -215,7 +293,7 @@
           q("progressWrap").style.display = "none";
         }
         const sys = await (await fetch("/api/system", { headers: hdrs })).json();
-        $s("mTps", sys.tokensPerSecond != null ? sys.tokensPerSecond.toFixed(1) : "—");
+        renderSystem(sys);
         try { await loadRequests(); } catch {}
       }
     } catch (e) {
@@ -276,11 +354,14 @@
     tbody.textContent = "";
     for (const r of rows) {
       const stCls = r.status === "completed" ? "chip ok" : r.status === "error" ? "chip err" : "chip warn";
+      const errClick = r.status === "error"
+        ? ' class="' + stCls + ' clk" data-id="' + escapeHtml(r.id) + '"'
+        : ' class="' + stCls + '"';
       const tr = document.createElement("tr");
       tr.innerHTML =
         "<td>" + new Date(r.startedAt).toLocaleTimeString() + "</td>" +
         '<td title="' + escapeHtml(r.id) + (r.path ? " · " + escapeHtml(r.path) : "") + '">' + shortId(r.id) + "</td>" +
-        '<td><span class="' + stCls + '">' + escapeHtml(r.status) + "</span></td>" +
+        "<td><span" + errClick + ">" + escapeHtml(r.status) + "</span></td>" +
         '<td class="num' + (r.totalTokens == null ? " dim" : "") + '">' + fmtToks(r) + "</td>" +
         '<td class="num' + (r.tokensPerSecond == null ? " dim" : " " + tpsRank(r.tokensPerSecond)) + '">' +
           (r.tokensPerSecond != null ? r.tokensPerSecond.toFixed(1) : "—") + "</td>" +
@@ -297,6 +378,22 @@
     for (const rec of body.entries || []) upsertRecord(rec);
     renderStreams();
   }
+  q("streamRows").addEventListener("click", (e) => {
+    const cell = e.target.closest(".clk");
+    if (!cell) return;
+    const rec = reqs.get(cell.getAttribute("data-id"));
+    if (!rec || rec.status !== "error") return;
+    const tr = cell.closest("tr");
+    const next = tr?.nextElementSibling;
+    if (next && next.classList.contains("errDetail")) {
+      next.remove();
+      return;
+    }
+    const d = document.createElement("tr");
+    d.className = "errDetail";
+    d.innerHTML = '<td colspan="6"><span style="color:var(--faint)">reason:</span> ' + escapeHtml(rec.error || "—") + "</td>";
+    tr?.after(d);
+  });
   function handleRequestEvent(obj) {
     if (obj.type !== "request.started" && obj.type !== "request.completed" && obj.type !== "request.error") return;
     upsertRecord({
@@ -395,19 +492,62 @@
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); }
   });
 
+  function logTagInfo(type) {
+    switch (type) {
+      case "request.completed": return ["ok", "req"];
+      case "request.error": return ["err", "req"];
+      case "request.started": return ["info", "req"];
+      case "system.metrics": return ["sys", "sys"];
+      case "model.status":
+      case "llama.status":
+      case "gateway.status": return ["info", "state"];
+      default: return ["dim", String(type).slice(0, 12)];
+    }
+  }
+  function appendLog(type, text, level) {
+    const el = q("log");
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    const [cls, label] = logTagInfo(type);
+    const colorCls = type === "log" && (level === "error" || level === "warn") ? (level === "error" ? "err" : "warn") : cls;
+    const row = document.createElement("div");
+    row.className = "evt";
+    const t = document.createElement("span");
+    t.className = "t";
+    t.textContent = new Date().toLocaleTimeString();
+    const tag = document.createElement("span");
+    tag.className = "tag " + colorCls;
+    tag.textContent = label;
+    const msg = document.createElement("span");
+    msg.className = "msg";
+    msg.textContent = text;
+    row.append(t, tag, msg);
+    el.appendChild(row);
+    while (el.children.length > 300) el.removeChild(el.firstChild);
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }
+  q("btnClearLog").addEventListener("click", () => { q("log").textContent = ""; });
+
   function connectWs(key) {
     if (!key) return;
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?key=${encodeURIComponent(key)}`);
     ws.onmessage = (ev) => {
-      const line = new Date().toLocaleTimeString() + "  " + ev.data.slice(0, 400);
-      q("events").textContent = (q("events").textContent ? line + "\n" : "") + line;
+      let obj;
       try {
-        const obj = JSON.parse(ev.data);
+        obj = JSON.parse(ev.data);
+      } catch {
+        appendLog("log", String(ev.data).slice(0, 400));
+        return;
+      }
+      if (obj.type === "log") {
+        appendLog("log", obj.message ?? "", obj.level);
         if (obj.message) parseLogLine(obj.message);
-        if (obj.type === "model.status") refresh();
-        if (obj.type === "llama.status" || obj.type === "gateway.status") refresh();
-        handleRequestEvent(obj);
-      } catch {}
+      } else {
+        appendLog(obj.type, JSON.stringify(obj).slice(0, 400));
+      }
+      if (obj.type === "model.status") refresh();
+      if (obj.type === "llama.status" || obj.type === "gateway.status") refresh();
+      if (obj.type === "system.metrics") renderSystem(obj);
+      handleRequestEvent(obj);
     };
     ws.onerror = () => { dot.className = "dot err"; };
     ws.onclose = () => { dot.className = "dot err"; };

@@ -35,10 +35,23 @@ export interface RequestTracker {
   applyTaskTiming(timing: RequestUsage): void;
   snapshot(): RequestRecord[];
   subscribe(cb: (record: RequestRecord) => void): () => void;
+  requestsPerMinute(): number;
 }
 
 export interface RequestTrackerOptions {
   maxRecords?: number;
+}
+
+export const RATE_WINDOW_MS = 60_000;
+export const RATE_PRUNE_MS = 120_000;
+
+export function countRequestRate(startTimes: number[], now: number, windowMs = RATE_WINDOW_MS): number {
+  const cutoff = now - windowMs;
+  let count = 0;
+  for (const t of startTimes) {
+    if (t >= cutoff) count += 1;
+  }
+  return count;
 }
 
 const EMPTY_USAGE: RequestUsage = {
@@ -52,6 +65,12 @@ export function createRequestTracker(opts: RequestTrackerOptions = {}): RequestT
   const ring: RequestRecord[] = [];
   const subscribers = new Set<(record: RequestRecord) => void>();
   const pendingTimings = new Map<string, RequestUsage>();
+  const startTimes: number[] = [];
+
+  function pruneStarts(): void {
+    const cutoff = Date.now() - RATE_PRUNE_MS;
+    while (startTimes.length && startTimes[0] < cutoff) startTimes.shift();
+  }
 
   function emit(record: RequestRecord): void {
     for (const cb of subscribers) cb(record);
@@ -72,6 +91,8 @@ export function createRequestTracker(opts: RequestTrackerOptions = {}): RequestT
 
   return {
     start(ctx) {
+      pruneStarts();
+      startTimes.push(Date.now());
       push({
         id: ctx.id,
         method: ctx.method,
@@ -137,6 +158,10 @@ export function createRequestTracker(opts: RequestTrackerOptions = {}): RequestT
       }
     },
     snapshot: () => [...ring],
+    requestsPerMinute: () => {
+      pruneStarts();
+      return countRequestRate(startTimes, Date.now());
+    },
     subscribe: (cb) => {
       subscribers.add(cb);
       return () => {
