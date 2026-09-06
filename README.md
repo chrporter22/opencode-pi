@@ -373,6 +373,41 @@ curl -N -s http://<pi-ip>:8080/v1/chat/completions \
 If either hangs or fails: laptop and Pi not on the same subnet, or the Pi firewall is
 blocking TCP 8080 for the LAN (allow it on your subnet only).
 
+### 7. Swap the model to Q4_K_M (4-bit) for faster inference
+
+The control plane is quant-agnostic, so the swap is a `.env` change plus the standard
+model update — no rebuild, no code change, `/opt/llama` untouched. The official Qwen
+repo only ships Q8_0, so the 4-bit file comes from bartowski's imatrix mirror
+(`Qwen_Qwen3-1.7B-Q4_K_M.gguf`, ~1.28 GB, SHA-256
+`72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb`). Full runbook:
+PRD §10.7.
+
+1. Back up the current `MODEL_URL`, `MODEL_SHA256`, `MODEL_QUANT` from `.env`.
+2. Set them to the Q4_K_M values:
+
+   ```bash
+   MODEL_URL=https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf
+   MODEL_SHA256=72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb
+   MODEL_QUANT=Q4_K_M
+   ```
+
+3. Reload the env — `docker compose up -d` (Compose recreates the service because the
+   env file changed; `restart` alone keeps the old env).
+4. Swap: Control Center → Model → **Download & Update**, or
+
+   ```bash
+   curl -s -X POST http://127.0.0.1:8080/api/model/update -H "x-api-key: <ADMIN_API_KEY>"
+   ```
+
+5. Verify: `/api/model` shows `"quantization":"Q4_K_M"`; `/v1/models` id stays
+   `Qwen3-1.7B`.
+6. Rollback: restore the saved values in `.env`, `docker compose up -d`, run the update
+   again.
+
+Expect roughly 1.3–1.6× more tok/s (memory-bandwidth-bound decode; ~1.28 GB vs
+~1.83 GB). Your laptop opencode config keeps working unchanged — the model ID is the
+same.
+
 ### Known behaviors
 
 - `POST /api/server/restart` cleanly exits the gateway process; recovery is the supervisor's

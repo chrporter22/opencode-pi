@@ -1,7 +1,7 @@
 # opencode-pi — Product Requirements Document
 
 - **Product:** opencode-pi
-- **Status:** Draft v0.4 (integrates original product spec §1–40, control-plane additions §41–42, Control Center v2 §6.12 + §9.4–9.7, and the analytics & risk layer refresh §6.13 #56–69, §7.1/§7.3/§7.4, §8, §9.9, §11, §18.1, §20)
+- **Status:** Draft v0.5 (integrates original product spec §1–40, control-plane additions §41–42, Control Center v2 §6.12 + §9.4–9.7, the analytics & risk layer refresh §6.13 #56–69, §7.1/§7.3/§7.4, §8, §9.9, §11, §18.1, §20, and the 4-bit model-swap runbook §10.7)
 - **Date:** 2026-09-06
 - **Owner:** <tbd>
 
@@ -840,6 +840,79 @@ Progress is streamed over `/ws` (`model.update` events).
 - After success or failure, `.download/` MUST be cleaned.
 - `scripts/cleanup.sh` removes only known temporary files and artifacts. It MUST NOT blindly run `rm -rf /opt/qwen-model/*`, and it must never delete the working model unless explicitly told to.
 
+### 10.7 Step-by-step: swap the default model to a 4-bit quant (Q8_0 → Q4_K_M)
+
+The official `Qwen/Qwen3-1.7B-GGUF` repo ships only the `Q8_0` file; the 4-bit
+**Q4_K_M** (imatrix) quant of the same model is published in a community mirror:
+
+- **Repo:** `bartowski/Qwen_Qwen3-1.7B-GGUF` (Apache-2.0, imatrix)
+- **File:** `Qwen_Qwen3-1.7B-Q4_K_M.gguf`
+- **URL:** `https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf`
+- **Size:** 1,282,439,584 bytes (~1.28 GB, vs ~1.83 GB for Q8_0)
+- **SHA-256:** `72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb`
+
+The swap is configuration-only — the model is data, not code, so nothing in the
+image or `/opt/llama` changes. It reuses the standard atomic update mechanism
+(§10.4): replacement only happens after a verified download, and a failed swap
+leaves `current.gguf` untouched.
+
+1. **Back up the current model values.** Save the running `MODEL_URL`,
+   `MODEL_SHA256`, and `MODEL_QUANT` from `.env` for rollback (the old
+   `current.gguf` is replaced, not kept).
+
+2. **Point the config at the 4-bit file.** In `.env`, set:
+
+   ```
+   MODEL_URL=https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf
+   MODEL_SHA256=72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb
+   MODEL_QUANT=Q4_K_M
+   ```
+
+   `MODEL_NAME=Qwen3-1.7B`, `MODEL_FILE=current.gguf`, and `MODEL_DIR=/opt/qwen-model`
+   stay as they are — the alias, filename, and mount are stable across quants.
+
+3. **Reload the gateway config.** The gateway reads env at startup, so recreate the
+   container: `docker compose up -d` (Compose recreates the service because the env
+   file changed). A plain `docker compose restart` would keep the old env.
+
+4. **Trigger the atomic swap.** The new URL/checksum come from config — the request
+   needs no body:
+
+   ```bash
+   curl -s -X POST http://127.0.0.1:8080/api/model/update -H "x-api-key: <ADMIN_API_KEY>"
+   ```
+
+   Or use the Control Center: **Model → Update → Download & Update**. Progress
+   (`downloading % → verified → swapping → done`) streams over `/ws`
+   (`model.update` events). The GGUF is downloaded to `.download/`, SHA-256-verified,
+   then atomically renamed to `current.gguf`; `llama-server` restarts and readiness
+   is gated.
+
+5. **Verify the swap.**
+   - `GET /api/status` → `"llama":"ready"`, `"modelLoaded":true`.
+   - `GET /api/model` → `"quantization":"Q4_K_M"`, `sizeBytes` ≈ 1,282,439,584,
+     `sha256` = the 4-bit hash above, `downloadUrl` = the bartowski URL.
+   - `GET /v1/models` → id still `Qwen3-1.7B` (the alias is unchanged).
+   - A streaming completion still works and tok/s is reported in `/api/system`.
+
+6. **Measure and re-tune.** CPU decoding is memory-bandwidth-bound, so the ~1.28 GB
+   file (vs ~1.83 GB) should yield roughly 1.3–1.6× throughput over the ~8.7 tok/s
+   baseline at `LLAMA_THREADS=4`. Re-measure with a live completion and adjust
+   `LLAMA_THREADS` if needed. If output quality regresses for a real use case, the
+   next step up is Q5_K_M (1.47 GB).
+
+7. **Rollback.** Restore the saved `MODEL_URL`/`MODEL_SHA256`/`MODEL_QUANT` (Q8_0) in
+   `.env`, run `docker compose up -d`, then trigger `POST /api/model/update` again —
+   Q8_0 is re-downloaded, verified, and reinstalled the same way.
+
+Notes:
+
+- There is no public "Qwen3.5-1.7B" artifact; the intended target is the Qwen3-1.7B
+  weights in 4-bit, served by the mirror above.
+- No host script is involved: `scripts/update-model.sh` (referenced in §10.4) does
+  not exist in the repo yet — the canonical path is the gateway API above, same as
+  `scripts/ensure-model.sh` vs. the in-container `ensure-model.action`.
+
 ## 11. Environment Configuration
 
 Configuration is controlled through environment variables (`.env`, loaded by Docker Compose). Secrets are never committed to Git.
@@ -1211,6 +1284,10 @@ Resolved at build time:
 - **Model:** Qwen3-1.7B, Q8_0 (`Qwen/Qwen3-1.7B-GGUF`, Apache-2.0, 1.83 GB).
 - **Repository/source URL:** `https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf` (public, no auth required).
 - **Checksum:** SHA-256 `061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a` published by HuggingFace LFS.
+- **Swap target (4-bit, optional, planned):** Qwen3-1.7B `Q4_K_M` via the
+  `bartowski/Qwen_Qwen3-1.7B-GGUF` imatrix mirror (~1.28 GB — URL, SHA-256, and the
+  step-by-step in §10.7). Default remains Q8_0 until the swap is executed. There is no
+  public "Qwen3.5-1.7B" artifact; "3.5-1.7b in 4 bit" resolved as Qwen3-1.7B in Q4_K_M.
 - **Expected context length:** `8192` (default).
 - **Target tokens/sec:** ~8–10 on Pi 5 (measured ~8.7 at 4 threads on Cortex-A76-class); `LLAMA_THREADS=4`.
 - **Pi 5 RAM:** 16 GB.

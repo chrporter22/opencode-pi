@@ -122,13 +122,32 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
   let child: ChildProcess | null = null;
   let stopping = false;
   let consecutiveFailures = 0;
+  let restartInFlight = false;
+  let respawnTimer: ReturnType<typeof setTimeout> | null = null;
+  const intentionallyStopped = new Set<ChildProcess>();
 
   const timingSubscribers = new Set<(t: LlamaTaskTiming) => void>();
   function emitTiming(t: LlamaTaskTiming): void {
     for (const cb of timingSubscribers) cb(t);
   }
 
+  function clearRespawn(): void {
+    if (respawnTimer !== null) {
+      clearTimeout(respawnTimer);
+      respawnTimer = null;
+    }
+  }
+
+  function scheduleRespawn(delay: number): void {
+    clearRespawn();
+    respawnTimer = setTimeout(() => {
+      respawnTimer = null;
+      spawnLlama();
+    }, delay);
+  }
+
   function terminate(prev: ChildProcess): Promise<void> {
+    intentionallyStopped.add(prev);
     return new Promise((resolve) => {
       prev.once("exit", () => resolve());
       prev.kill("SIGTERM");
@@ -174,6 +193,7 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
 
     const onExit = async () => {
       if (child === proc) child = null;
+      if (intentionallyStopped.delete(proc)) return;
       state.setModelLoaded(false);
       if (stopping) {
         state.setLlama("stopped");
@@ -188,7 +208,7 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
       const delay = BACKOFF_MS[Math.min(consecutiveFailures - 1, BACKOFF_MS.length - 1)];
       logger.warn(`llama-server exited; restarting in ${delay}ms (attempt ${consecutiveFailures})`);
       state.setLlama("restarting");
-      setTimeout(spawnLlama, delay);
+      scheduleRespawn(delay);
     };
 
     proc.on("exit", onExit);
@@ -204,21 +224,30 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
 
   return {
     start() {
+      clearRespawn();
       stopping = false;
       spawnLlama();
     },
     async restart() {
-      stopping = false;
-      consecutiveFailures = 0;
-      const prev = child;
-      if (prev) {
-        state.setLlama("restarting");
-        await terminate(prev);
+      if (restartInFlight) return;
+      restartInFlight = true;
+      try {
+        clearRespawn();
+        stopping = false;
+        consecutiveFailures = 0;
+        const prev = child;
+        if (prev) {
+          state.setLlama("restarting");
+          await terminate(prev);
+        }
+        spawnLlama();
+      } finally {
+        restartInFlight = false;
       }
-      spawnLlama();
     },
     async stop() {
       stopping = true;
+      clearRespawn();
       const prev = child;
       if (prev) await terminate(prev);
       state.setLlama("stopped");
