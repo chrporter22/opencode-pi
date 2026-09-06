@@ -16,16 +16,19 @@ A self-hosted, LAN-only local AI control center for a Raspberry Pi 5. Runs a qua
 ```
 LAN ──► Express Gateway :8080 (single LAN entry point)
            ├─ GET /        → static control center (gateway/public/index.html)
-           ├─ /api/*       → control plane (admin key)
+           ├─ /api/*       → control plane + analytics proxies (admin key)
+           ├─ /api/analytics/stream → live SSE (admin key)
            ├─ /v1/*        → OpenAI API, reverse-proxied (inference key)
            ├─ /ws          → realtime events (admin key)
            └─ node http-proxy → lightweight reverse proxy (lite nginx)
                 └─► llama-server 127.0.0.1:8000 (never on the LAN)
-                     ▲ webhook (numeric telemetry only)
+                     ▲ webhook (numeric telemetry only; bounded Redis escrow on outage)
                      │
-      analytics :8081 (Python, planned) ──► Redis ──► SQLite (+ vector) store
-        TFLite NN · PCA + risk · drift detection (offline-trained model)
-        live scores back to gateway → /ws fan-out
+      analytics :8081 (internal, gateway-proxied only)
+        │  ML serving layer · EWMA + PCA (top-3-PC ±1.5σ label) · drift · lookalikes
+        │  └─► analytics-train (no exposed port, UI-startable TFLite training → /opt/qwen-ml)
+        │  live results → gateway → /ws fan-out + SSE stream /api/analytics/stream
+        └──► Redis (warehoused volume) ──► SQLite (+ 2 sqlite-vec embedding stores, external mount)
 ```
 
 - **One exposed port.** The gateway binds `0.0.0.0:8080`; only `8080:8080` is published. `llama-server` binds `127.0.0.1:8000` and is never on the LAN.
@@ -45,7 +48,7 @@ opencode-pi/
 ├── Dockerfile               ← small: Node gateway only
 ├── .env.example
 ├── model/                   ← documents the model-as-data convention
-├── analytics/               ← planned Python analytics microservice (analytics-layer doc)
+├── analytics/               ← planned analytics + analytics-train services (PRD §6.13, docs/analytics-layer.md)
 ├── gateway/
 │   ├── public/index.html    ← single-file control center UI
 │   └── src/                 ← Express + http-proxy + auth + model mgmt
@@ -139,6 +142,13 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | `ANALYTICS_FEATURE_WINDOW_SEC` | Feature aggregation window | `60`    |
 | `ANALYTICS_CONTEXT_WINDOWS` | Context windows fed to model   | `12`        |
 | `ANALYTICS_EWMA_DECAY`| EWMA reference decay per window  | `0.005`       |
+| `ANALYTICS_ML_DIR`    | Host ML artifacts dir            | `/opt/qwen-ml` |
+| `ANALYTICS_DB_FILE`   | SQLite store file (external mount) | `/var/lib/analytics/analytics.db` |
+| `ANALYTICS_PCA_COMPONENTS` | Max PCA components retained  | `6`            |
+| `ANALYTICS_PCA_WATCH_Z` / `ANALYTICS_PCA_HIGH_Z` | Top-3-PC σ thresholds (watch / high) | `1.0` / `1.5` |
+| `ANALYTICS_EMBED_ENABLED` / `ANALYTICS_EMBED_MODEL` | Lookalike embedding stores / embedder | `true` / (unset) |
+| `ANALYTICS_TRAIN_URL` | Analytics → training base URL      | `http://analytics-train:8082` |
+| `REDIS_PERSISTENT`    | Persist Redis (volume + appendonly) | `true`        |
 
 ## API summary
 
@@ -148,8 +158,8 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | Control     | `GET /api/status`, `/api/model`, `/api/system`, `/api/system/host`, `/api/metrics`, `/api/logs`, `/api/requests`, `/api/analytics/*` | admin key |
 | Operations  | `POST /api/model/update`, `/api/model/restart`, `/api/server/restart` | admin key |
 | Inference   | `GET /v1/models`, `POST /v1/chat/completions` | inference key |
-| Realtime    | `WS /ws`      | admin key     |
-| Analytics (planned) | `POST :8081/v1/analytics/ingest` (webhook), `GET …/training/export`, `GET …/historic/windows`, `POST …/scores`, `POST …/rebaseline` | shared secret |
+| Realtime    | `WS /ws` + SSE `GET /api/analytics/stream` | admin key |
+| Analytics (planned) | `POST :8081/v1/analytics/ingest` (webhook → bounded escrow), `GET …/stream` (SSE), `…/training/export`, `…/historic/windows`, `…/pca`, `…/lookalikes`, `POST …/scores`, `…/rebaseline`, `…/training/start`, `GET …/training/status`, `…/pipelines`, `…/warehouse/sql`, `…/warehouse/redis` | shared secret (internal) → admin-proxied under `/api/analytics/*` |
 
 ## Control center
 
@@ -197,35 +207,46 @@ rolling `requestsPerMinute` on `/api/system` / `/api/metrics` / `system.metrics`
 llama-server's own `slot print_timing` accounting for streams (llama's streaming chunks carry
 no `usage`); unknown counts display as `—`.
 
-## Analytics & risk layer (planned)
+## Analytics & risk layer (planned — docs refreshed 2026-09-06)
 
-A separate Python microservice (`analytics/`, port `8081`) gives the control center a
-data-science / ML layer for drift detection and risk scoring — **numeric-only telemetry,
-never prompt/response/reasoning content**.
+A separate Python microservice (`analytics/`, port `8081`, internal) gives the control
+center a live ML layer for drift detection and risk scoring — **numeric-only telemetry,
+never prompt/response/reasoning content**. All access is through the gateway; `:8081` is
+never published, and the external Qwen project reads the same admin-proxied
+`/api/analytics/*` surface on `:8080`.
 
 - **Ingest webhook.** The gateway pushes per-request records and 60s window aggregates to
   `POST /v1/analytics/ingest` (shared secret). On outage, batches queue in Redis and flush on
-  reconnect — no loss, no inference backpressure. (Push cadence is TBD.)
+  reconnect — no loss, no inference backpressure. (Push cadence is TBD.) Incoming webhook
+  batches appear in the live log as `analytics.webhook` entries.
 - **Context windows.** Features (per-request token counts/duration/tok/s, window
   requests/min + error rate + p95/p99, system cpu/mem/temp/disk at inference time) roll into
   60s windows; the model consumes the last `ANALYTICS_CONTEXT_WINDOWS` windows as its input
   tensor.
 - **Adaptive EWMA reference.** Mean/σ and PCA loadings decay slowly, so risk reads as
   "drift from the recent norm"; a manual re-fit endpoint is available.
-- **PCA + 1.5σ risk model.** Hotelling `T²` of standardized scores → exact `F/χ²` tail
-  probability; "≥1.5σ" per component is the two-tailed normal tail (p ≈ 0.134), aggregated
-  across k components. Levels: normal / watch (>1.5σ) / high. Drift via feature PSI, KS/MMD
-  on PC scores, and loading shift.
-- **SQLite vector/embedding store + Redis.** Windows and requests are stored with feature
-  vectors and NN embeddings (`sqlite-vec` index) for historic lookback; Redis backs the key
-  cache, per-key rate limits, the ingest escrow, and the live-score cache.
-- **TF-Lite neural net.** A small offline-trained model (context window → risk/drift
-  probabilities) served via TFLite in Python; training/quantization happens outside the
-  running services.
-- **Live result transport — gateway fan-out.** Analytics POSTs scores/drift to the gateway,
-  which broadcasts `analytics.risk` / `analytics.drift` over the existing admin `/ws`. The
-  Control Center gains an Analytics card; historic analysis is admin-proxied via
-  `/api/analytics/*`.
+- **PCA + top-3-PC label.** Retains up to `ANALYTICS_PCA_COMPONENTS` (6) components over the
+  current rolling window. **High risk** whenever any top-3 principal component is
+  `z ≤ −1.5 or z ≥ +1.5` (signed — both directions trip); **watch** for `1.0 ≤ |z| < 1.5`;
+  otherwise **normal**. Hotelling `T²` supports the label with an `F/χ²` tail probability.
+  Drift via feature PSI, KS/MMD on PC scores, and loading shift.
+- **ML serving layer.** Every new window triggers a live re-score; results are served over
+  `analytics.risk` / `analytics.pca` / `analytics.drift` WS events **and** the SSE stream
+  `GET /api/analytics/stream` (admin-proxied), so the UI and external consumers hold a live
+  connection on both.
+- **SQLite vector/embedding store + warehoused Redis.** Windows/requests carry feature
+  vectors, `context` tensors, PCs/loadings, a **learned numeric embedding**, and a separate
+  **semantic embedding** (transformer over a content-free numeric window encoding); two
+  `sqlite-vec` indexes serve lookalike search, and neither embedding enters PCA/risk math.
+  SQLite is on an external mount; Redis is persisted (volume + appendonly) and both surface
+  in the UI Warehouse view.
+- **TF-Lite NN served from in-app training.** Artifacts train in a `analytics-train` compose
+  service, startable from the UI, that writes to `/opt/qwen-ml` (host mount); the analytics
+  service hot-reloads them, so TFLite serving goes live once artifact #1 exists. Python
+  kernels are scoped to port to C++ later.
+- **Live result transport — gateway fan-out + SSE.** Analytics POSTs scores/drift to the
+  gateway, which broadcasts `analytics.*`, `training.*`, `pipeline.*`, and `store.*` events
+  over the existing admin `/ws` and the new `/api/analytics/stream` SSE endpoint.
 - **Training data endpoint.** `GET /v1/analytics/training/export` (shared secret) or the
   admin proxy `GET /api/analytics/training/export` returns labeled JSONL/CSV — each window
   with `features`, `context`, `pcs`, `risk` and the `normal | watch | high` label
@@ -235,7 +256,7 @@ Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD
 
 ## Documentation
 
-- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–65), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
+- [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–69), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
 - [`docs/analytics-layer.md`](docs/analytics-layer.md) — analytics & risk layer design: feature/key/embedding schema and service↔service data contracts.
 
 ## Status
@@ -254,8 +275,10 @@ Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD
   `/v1/models` id `Qwen3-1.7B`, SSE tokens flowing, tok/s surfaced in `/api/system`)
 - [x] Control Center v2: streams table (`GET /api/requests` + `request.*` WS), Playground,
   Viridis theme toggle, JetBrains Mono Nerd Font, no-overlap layout (PRD §6.12, §9.4–9.7)
-- [ ] Analytics & risk layer: Python microservice, webhook ingest, EWMA + PCA risk,
-  drift detection, SQLite vector store, Redis, gateway fan-out (PRD §6.13 — planned)
+- [ ] Analytics & risk layer: Python microservice (analytics + analytics-train), webhook
+  ingest, ML serving layer (WS + SSE), EWMA + PCA top-3-PC ±1.5σ label, drift detection,
+  SQLite vector store + warehoused Redis, gateway fan-out, orchestrator UI (PRD §6.13 — docs
+  refreshed 2026-09-06, implementation pending)
 
 ## Getting started from your laptop
 

@@ -1,8 +1,8 @@
 # opencode-pi — Product Requirements Document
 
 - **Product:** opencode-pi
-- **Status:** Draft v0.3 (integrates original product spec §1–40, control-plane additions §41–42, and Control Center v2 §6.12 + §9.4–9.7)
-- **Date:** 2026-09-05
+- **Status:** Draft v0.4 (integrates original product spec §1–40, control-plane additions §41–42, Control Center v2 §6.12 + §9.4–9.7, and the analytics & risk layer refresh §6.13 #56–69, §7.1/§7.3/§7.4, §8, §9.9, §11, §18.1, §20)
+- **Date:** 2026-09-06
 - **Owner:** <tbd>
 
 ## 1. Overview
@@ -379,13 +379,22 @@ log
     treatment so the UI reads as alive. The topbar title carries a subtitle tag naming the
     app (e.g. "opencode-pi gateway"). The theme set (§6.12 #48) is preserved.
 
-### 6.13 Analytics & risk layer (ML plan)
+### 6.13 Analytics & risk layer (ML plan — revised 2026-09-06)
+
+The layer is a separate Python microservice (`analytics`, port `8081`) that **serves live**
+ML results. It is fed by the gateway via a webhook, re-scores every new window against an
+adaptive EWMA + PCA reference, labels windows via a top-3 principal-component ±1.5σ rule,
+detects drift over historic windows, searches two lookalike embedding stores, and serves
+everything live over the gateway as WS events and an SSE stream. All access is
+gateway-proxied; `:8081` is never exposed to the LAN.
 
 56. **Analytics microservice.** A separate Python process (`analytics`, port `8081`) consumes
     gateway telemetry via a webhook and runs the ML layer: a TF-Lite neural net for risk/drift
     inference, PCA eigen-decomposition for the risk model, and windowed historic analysis. It
     is a sibling service in this repo (same Compose stack), runtime-decoupled from the gateway:
-    the gateway never blocks inference on analytics availability.
+    the gateway never blocks inference on analytics availability. The numeric kernel is written
+    to be portable to C++ later (well-specified math routines, transportable storage schema, no
+    Python-only state in the hot path).
 57. **Feature & context windows.** Numeric-only features roll into fixed windows
     (`ANALYTICS_FEATURE_WINDOW_SEC`, default 60s). The model consumes a **context window** —
     the last `ANALYTICS_CONTEXT_WINDOWS` windows per feature (default 12 ≈ up to 12 min) — as
@@ -395,29 +404,67 @@ log
     `POST /v1/analytics/ingest` (shared secret `INGEST_SECRET`). Push cadence is deferred
     (TBD). When analytics is unreachable, batches queue in Redis with a bounded escrow and
     flush on reconnect — no loss, no backpressure on inference. Ingested records stay
-    numeric-only, preserving §6.7 #33.
+    numeric-only, preserving §6.7 #33. Incoming webhook batches surface in the live log and
+    `/api/logs` as `analytics.webhook` entries (batch size, record count, latency, auth result).
 59. **Adaptive EWMA reference.** Reference statistics (per-feature mean/σ, PCA loadings)
     adapt with slow exponential decay (`ANALYTICS_EWMA_DECAY`) rather than being frozen, so
     risk reads as "drift from the recent norm". A manual re-fit endpoint is provided.
-60. **PCA + risk score.** Eigen-decomposition on the reference covariance yields principal
-    components. Live score = Hotelling `T²` of standardized scores; risk probability = exact
-    `F/χ²` tail of `T²`. "≥1.5σ from the mean" for one component is the two-tailed normal tail
-    (p ≈ 0.134), aggregated across k components. Levels: **normal / watch (>1.5σ) / high**.
+60. **PCA + label rule.** Eigen-decomposition yields up to `ANALYTICS_PCA_COMPONENTS` (default 6)
+    principal components over the **current rolling context window**. Hotelling `T²` of
+    standardized scores gives a supporting continuous probability (`F/χ²` tail). The risk
+    **label** is driven by the **top 3** components' z-scores against the EWMA reference:
+    **high risk** when any top-3 PC is `z ≤ −1.5 or z ≥ +1.5` (signed — both directions trip),
+    **watch** when `ANALYTICS_PCA_WATCH_Z ≤ |z| < 1.5`, otherwise **normal**. Labels recompute
+    live on each new window and double as the training target.
 61. **Drift detection.** Feature-level PSI, KS/MMD on PC scores, and loading-vector shift,
     evaluated over historic stored windows and live on the latest window.
 62. **SQLite vector/embedding store.** Each request and window is a row carrying its feature
-    vector + NN embedding (BLOB). A vector index (`sqlite-vec`) supports nearest-neighbor
-    historic lookback ("when did we behave like this before?"), feeding PCA comparisons and a
-    Control Center lookalikes view.
+    vector, `context` tensor, principal components, eigenvalues, per-feature loadings, and a
+    learned numeric embedding (NN head). A second `sqlite-vec` index stores **semantic
+    embeddings** (transformer embedder over a canonical, content-free numeric window encoding —
+    never prompt/response/reasoning content). Both embedding stores support nearest-neighbor
+    historic lookback ("which past windows looked like this?") and are **excluded from PCA/risk
+    math**. The db file lives on an external mount (survives container recreation).
 63. **Redis.** Full footprint: validated-key cache + per-key rate-limit counters, the analytics
-    ingest escrow queue, and a shared live-score cache between gateway and analytics.
-64. **TF-Lite neural net.** A small offline-trained model (context window → risk + drift
-    probabilities) served via TFLite inside the Python service; training/quantization happens
-    outside the running services and artifacts ship as files.
-65. **Live ML results in the UI (gateway fan-out).** Analytics POSTs latest scores/drift to a
-    gateway endpoint; the gateway broadcasts `analytics.risk` / `analytics.drift` over the
-    existing admin-authenticated `/ws`. The Control Center gains an Analytics card, and
-    historic analysis is admin-proxied via `/api/analytics/*`.
+    ingest escrow queue, and a shared live-score cache between gateway and analytics. Redis is
+    **warehoused**: compose volume + appendonly persistence, with keys/types/TTL visible in the
+    Control Center Warehouse view.
+64. **TF-Lite neural net + in-app training.** A small model (context window → risk + drift
+    probabilities) is served via TFLite inside the Python service. Training runs **in-app**: a
+    compose service `analytics-train` (no exposed port) is startable from the UI and invoked by
+    `analytics` via API; it trains/quantizes from the labeled window export and writes artifacts
+    to `/opt/qwen-ml`; `analytics` hot-reloads new artifacts, so TFLite serving goes live once
+    artifact #1 exists. Artifacts live on the host under `/opt/qwen-ml` and are mounted in —
+    never baked into images.
+65. **Live ML results in the UI (gateway fan-out + SSE).** Analytics POSTs latest scores/drift
+    to a gateway endpoint, which broadcasts `analytics.risk` / `analytics.drift` (and
+    `analytics.pca`, `training.*`, `pipeline.*`, `store.*`) over the existing
+    admin-authenticated `/ws`. Analytics also exposes an SSE stream (`/v1/analytics/stream`,
+    shared secret) that the gateway proxies as `GET /api/analytics/stream` (admin key) for
+    EventSource clients. The Control Center gains Analytics, Connections, Pipelines,
+    Warehouse, Documents, and How-to-use sections; historic analysis is admin-proxied via
+    `/api/analytics/*`.
+66. **Gateway-proxy-only access.** The analytics service binds internally; the UI and any
+    external consumer (e.g. another project using Qwen) reach analytics data **only** through
+    admin-proxied `/api/analytics/*` on the gateway `:8080`. Only `8080:8080` is published to
+    the LAN; `:8081` is never exposed. The SQLite file is never shared as a raw network file.
+    The gateway + analytics containers together are the source of truth.
+67. **Live historic streaming.** A change-feed streams new window/request rows from the vector
+    store to the ML layer (triggers a live re-score on every new window) and to the UI via
+    `store.window` / `store.request` events and the SSE stream; historic and live data for the
+    external Qwen project are served through the same gateway read API.
+68. **Orchestrator UI.** The Control Center gains: a Dashboard with quick **Test connection** /
+    **Sync now** buttons per connection; an **Analytics** card showing ML results plus ML
+    service **compute time (ms)**, **temperature**, and ML process CPU/mem; a **Connections**
+    section (gateway / analytics / redis / sqlite / webhook / external Qwen with endpoint
+    details, health, mini metrics, add/edit metadata); a **Pipelines** section (training,
+    webhook, and live WebSocket clients as pipelines with usable endpoints, events/sec, bytes,
+    last-seen, status, and UI-registered new pipelines); a **Warehouse** section (SQLite
+    schema/tables/columns/row counts/raw columns + Redis keys/types/TTL/memory); Logs
+    (including incoming webhook entries); a **Documents** page; and a **How-to-use** page.
+69. **Multivariate live updates.** Every analytics surface — risk label, PCA components and
+    loadings, drift, lookalikes, warehouse counts, pipeline/connection metrics — updates live
+    via the WebSocket bus and the SSE stream; the UI holds a live connection on both.
 
 Feature set (numeric-only): per-request `log prompt/completion/total tokens`, `tok/s`,
 `log durationMs`, error-binary; window `requestsPerMinute`, error rate, p95/p99 latency and
@@ -442,10 +489,19 @@ approval — still never the content itself).
 | POST   | `/api/model/update`  | Download & atomically swap a model         |
 | POST   | `/api/model/restart` | Reload `llama-server` with current model   |
 | POST   | `/api/server/restart`| Restart the gateway service                |
-| GET    | `/api/analytics/risk`| Latest risk score + PC components (proxied to analytics) |
+| GET    | `/api/analytics/risk`| Latest risk score + label + PC components (proxied) |
+| GET    | `/api/analytics/pca` | PCA snapshot: components, eigenvalues, per-feature loadings (proxied) |
 | GET    | `/api/analytics/drift/historic` | Historic drift series (proxied)     |
-| GET    | `/api/analytics/historic/lookalikes` | Nearest historic windows by embedding (proxied) |
+| GET    | `/api/analytics/historic/lookalikes` | Nearest historic windows by embedding type (proxied) |
 | GET    | `/api/analytics/training/export`     | Labeled training-data export (admin proxy to analytics) |
+| POST   | `/api/analytics/training/start`      | Start/queue an in-app TFLite training job (proxy) |
+| GET    | `/api/analytics/training/status`     | Training job status + progress (proxy) |
+| POST   | `/api/analytics/rebaseline`          | Manual EWMA / PCA reference re-fit (proxy) |
+| GET    | `/api/analytics/pipelines`           | Pipeline list (training, webhook, live WS clients) (proxy) |
+| POST   | `/api/analytics/pipelines`           | Register a new pipeline (consumer/webhook) (proxy) |
+| GET    | `/api/analytics/warehouse/sql`       | SQLite schema, tables, columns, row counts (proxy) |
+| GET    | `/api/analytics/warehouse/redis`     | Redis key inventory (types / TTL / memory) (proxy) |
+| GET    | `/api/analytics/stream`              | Live analytics SSE stream (admin key; proxied from `:8081`) |
 
 ### 7.2 Inference API (`/v1/*`) — inference key
 
@@ -454,7 +510,7 @@ approval — still never the content itself).
 | GET    | `/v1/models`            | OpenAI-compatible model list           |
 | POST   | `/v1/chat/completions`  | OpenAI-compatible chat completions     |
 
-### 7.3 Analytics API (`:8081/*`) — shared secret
+### 7.3 Analytics API (`:8081/*`) — shared secret, internal to compose
 
 | Method | Path                       | Description                               |
 |--------|----------------------------|-------------------------------------------|
@@ -463,13 +519,23 @@ approval — still never the content itself).
 | POST   | `/v1/analytics/rebaseline` | Manual EWMA / PCA reference re-fit        |
 | GET    | `/v1/analytics/training/export` | Labeled JSONL/CSV training-data export    |
 | GET    | `/v1/analytics/historic/windows` | Paged raw window + embedding records      |
+| GET    | `/v1/analytics/pca`        | PCA snapshot (components, eigenvalues, per-feature loadings) |
+| GET    | `/v1/analytics/lookalikes` | Nearest historic windows by embedding type (learned / semantic) |
+| POST   | `/v1/analytics/training/start` | Start an in-app TFLite training job     |
+| GET    | `/v1/analytics/training/status` | Training job status + progress          |
+| GET    | `/v1/analytics/pipelines`  | Pipeline list (training, webhook, consumers) |
+| POST   | `/v1/analytics/pipelines`  | Register a new pipeline (consumer/webhook) |
+| GET    | `/v1/analytics/warehouse/sql` | SQLite schema, tables, columns, row counts |
+| GET    | `/v1/analytics/warehouse/redis` | Redis key inventory (types / TTL / memory) |
+| GET    | `/v1/analytics/stream`     | Live SSE stream (shared secret — proxied by the gateway) |
 | GET    | `/v1/analytics/health`     | Analytics liveness (no auth)              |
 
 ### 7.4 Realtime (`/ws`) — admin key
 
-| Method | Path | Description                       |
-|--------|------|-----------------------------------|
-| WS     | `/ws`| Server-pushed realtime events     |
+| Method  | Path | Description                       |
+|---------|------|-----------------------------------|
+| WS      | `/ws`| Server-pushed realtime events (WebSocket) |
+| SSE (GET) | `/api/analytics/stream` | Live analytics events (EventSource; proxied from `:8081`) |
 
 ### 7.5 Example responses
 
@@ -503,9 +569,13 @@ approval — still never the content itself).
 }
 ```
 
-## 8. WebSocket Events
+## 8. Realtime Events (WebSocket + SSE)
 
-All events are JSON objects with at least a `type` and a `timestamp`.
+All events are JSON objects with at least a `type` and a `timestamp`. They are delivered
+over the admin-authenticated WebSocket `/ws`. The analytics events (`analytics.*`,
+`training.*`, `pipeline.*`, `store.*`, `analytics.webhook`) are additionally served on the
+SSE stream `GET /api/analytics/stream` (admin key, EventSource-compatible), so the UI and
+the external Qwen project can hold a live connection without WebSockets.
 
 | Event                | Payload (besides `type`, `timestamp`)                      |
 |----------------------|------------------------------------------------------------|
@@ -517,6 +587,17 @@ All events are JSON objects with at least a `type` and a `timestamp`.
 | `request.started`    | `id`, `path`, `model`, `startedAt`                        |
 | `request.completed`  | `id`, `model`, `status`, `durationMs`, `promptTokens`, `completionTokens`, `totalTokens`, `tokensPerSecond` |
 | `request.error`      | `id`, `model`, `status`, `startedAt`, `error`             |
+| `analytics.risk`     | `label` (`normal` / `watch` / `high`), `t2`, `pValue`, `top3`: `[{i, z, signed}]`, `timestamp` |
+| `analytics.pca`      | `components`: up to 6 `[{i, eigenvalue, loadings: {feature: value}}]`, `k`, `windowStart` |
+| `analytics.drift`    | `features` (`psi`), `ks`, `mmd`, `loadingShift`, `windowStart` |
+| `training.started`   | `jobId`, `artifactTarget`                                  |
+| `training.progress`  | `jobId`, `phase`, `percent`                                |
+| `training.done`      | `jobId`, `artifact`, `sizeBytes`, `quantization`           |
+| `training.error`     | `jobId`, `error`                                           |
+| `pipeline.*`         | `id`, `kind` (`webhook` / `ws` / `consumer` / `training`), `status`, `metrics` (`eventsPerSecond`, `bytes`, `lastSeen`) |
+| `store.window`       | `id`, `windowStart`, `features`, `context`, `pcs`, `label`, `embeddings` |
+| `store.request`      | `id`, `startedAt`, `features`, `embedding`, `error`        |
+| `analytics.webhook`  | `batchSize`, `records`, `latencyMs`, `authOk`              |
 | `log`                | `level`, `message`                                         |
 
 Example — metrics:
@@ -549,6 +630,23 @@ Example — model update progress:
   "type": "model.update",
   "status": "downloading",
   "progress": 67
+}
+```
+
+Example — analytics risk (SSE and WS share this payload):
+
+```json
+{
+  "type": "analytics.risk",
+  "timestamp": 1788300600000,
+  "label": "high",
+  "t2": 9.41,
+  "pValue": 0.0082,
+  "top3": [
+    { "i": 0, "z": 2.06, "signed": 2.06 },
+    { "i": 1, "z": -1.71, "signed": -1.71 },
+    { "i": 2, "z": 0.62, "signed": 0.62 }
+  ]
 }
 ```
 
@@ -630,6 +728,39 @@ status bar. On wide screens the dashboard is a 3-column grid laid out top-to-bot
 Each card is tinted with its own accent (top border + card title). All cards fill their grid
 tracks and collapse to a single column on narrow screens, where the sidebar becomes a compact
 icon rail.
+
+### 9.9 Analytics & orchestrator UI
+
+The Control Center gains an orchestration layer for the analytics & risk layer. All of it
+reads through the gateway (`/api/analytics/*` admin proxies, `/ws`, and the SSE stream
+`/api/analytics/stream`) — the browser never talks to `:8081` directly. Every surface
+updates live via WS + SSE.
+
+- **Dashboard quick sync.** Every connection card (gateway, llama, analytics, redis,
+  sqlite, webhook, external Qwen client) carries **Test connection** (ping + latency/OK)
+  and **Sync now** (pull the latest snapshot on demand) buttons.
+- **Analytics card.** ML results: current risk label (normal / watch / high), supporting
+  `T²` / `p-value`, the **top-3 PC z-scores** (`analytics.risk`), a **dynamic PCA plot
+  cycling PC1…PC6** with per-feature loading bars and the highest-loading feature per PC
+  (`analytics.pca`), drift indicators, and lookalikes. Rows highlight/filter by risk label.
+  ML service details shown live: **per-window compute time (ms)**, **temperature** (Pi temp
+  source), and the ML process CPU / memory.
+- **Connections.** Metadata-rich cards for gateway, analytics, redis, **sql** (sqlite), and
+  **pipelines**: endpoint details, health, mini metrics (events/sec, bytes, last seen),
+  add/edit connection metadata, and the test/sync controls.
+- **Pipelines.** Training, webhook (ingest + score push), and **live WebSocket clients**
+  rendered as pipelines with usable endpoints, events/sec, bytes, last-seen, and status;
+  the UI can **register new pipelines** (consumer/webhook endpoints), persisted in the
+  warehouse config.
+- **Warehouse.** SQL view (db file, size, tables, columns, schema, row counts, raw
+  columns) + Redis view (keys, types, TTL, memory, persistence) via the warehouse proxies.
+- **Logs.** The existing log window, now including incoming **webhook** entries
+  (`analytics.webhook`: batch size, record count, latency, auth result) plus the
+  `training.*` / `pipeline.*` / `store.*` events.
+- **Documents.** Renders the repo's docs in-app (PRD, `docs/analytics-layer.md`,
+  README/quickstart).
+- **How-to-use.** A guided page covering: pointing OpenCode at the gateway, running
+  analytics, starting a training job, testing connections, and querying lookalikes.
 
 ## 10. Model Lifecycle & Data Management
 
@@ -741,6 +872,15 @@ Configuration is controlled through environment variables (`.env`, loaded by Doc
 | `ANALYTICS_FEATURE_WINDOW_SEC` | Feature aggregation window            | `60`                        |
 | `ANALYTICS_CONTEXT_WINDOWS`    | Context windows fed to the model       | `12`                        |
 | `ANALYTICS_EWMA_DECAY`  | EWMA reference decay per window               | `0.005`                     |
+| `ANALYTICS_ML_DIR`      | Host ML artifacts dir (TFLite, checkpoints)   | `/opt/qwen-ml`              |
+| `ANALYTICS_DB_FILE`     | SQLite store file (external mount)            | `/var/lib/analytics/analytics.db` |
+| `ANALYTICS_PCA_COMPONENTS` | Max PCA components retained                | `6`                         |
+| `ANALYTICS_PCA_WATCH_Z` | Watch-band σ threshold on top-3 PC z-scores   | `1.0`                       |
+| `ANALYTICS_PCA_HIGH_Z`  | High-risk σ threshold (`≤ −h or ≥ +h` trips)  | `1.5`                       |
+| `ANALYTICS_EMBED_ENABLED` | Enable lookalike embedding stores            | `true`                      |
+| `ANALYTICS_EMBED_MODEL` | Transformer embedder model id (semantic store)| (unset)                     |
+| `ANALYTICS_TRAIN_URL`   | Analytics → training service base URL         | `http://analytics-train:8082` |
+| `REDIS_PERSISTENT`      | Persist Redis to disk (volume + appendonly)   | `true`                      |
 
 Notes:
 
@@ -830,17 +970,31 @@ Logs are captured in a bounded in-memory ring (`GET /api/logs`) and streamed liv
 
 ```
 docker-compose.yml
-└── gateway
-      ├── Express            (REST control + OpenAI proxy + WS + static UI)
-      ├── node http-proxy    (lightweight reverse proxy / ingress)
-      └── llama-server       (127.0.0.1:8000, localhost-only)
+├── gateway
+│     ├── Express            (REST control + OpenAI proxy + WS + SSE proxy + static UI)
+│     ├── node http-proxy    (lightweight reverse proxy / ingress)
+│     └── llama-server       (127.0.0.1:8000, localhost-only)
+│
+├── analytics                (Python FastAPI + TFLite + scipy, :8081, internal only)
+│     │                        ML serving layer · EWMA/PCA · drift · lookalikes · SSE stream
+│     └── analytics-train    (Python, no exposed port, UI-startable TFLite training)
+│
+└── redis                    (internal; key cache, rate-limit counters, ingest escrow,
+                             live-score cache; warehoused volume + appendonly)
 
 ports:
   - "8080:8080"               # only exposed port
 
 volumes:
-  - /opt/qwen-model:/models   # model data (gateway only)
-  - /opt/llama:/opt/llama:ro  # host-provisioned llama runtime (read-only)
+  - /opt/qwen-model:/models            # model data (gateway only)
+  - /opt/llama:/opt/llama:ro            # host-provisioned llama runtime (read-only)
+  - /opt/qwen-ml:/opt/qwen-ml           # ML artifacts (analytics + analytics-train)
+  - /opt/qwen-ml/state:/var/lib/analytics  # SQLite store file (external, survives recreation)
+  - redis-data:/data                    # warehoused Redis (appendonly)
+
+networks:
+  internal stack only; analytics/redis/analytics-train unreachable from the LAN
+  (only 8080:8080 is published)
 
 restart: unless-stopped
 healthcheck: scripts/healthcheck.sh
@@ -979,11 +1133,37 @@ Streaming (`"stream": true`) must also be tested.
 
 ### Analytics & risk layer
 
-- The analytics microservice ingests gateway telemetry via the webhook and scores windows against the adaptive EWMA reference; no gateway request path blocks on analytics availability.
-- Risk output is a multivariate tail probability: the 1.5σ threshold yields normal / watch / high states; drift flags (PSI / KS / MMD, loading shift) are surfaced over historic windows.
-- SQLite stores request and window rows with embeddings and a vector index for nearest-neighbor lookback; Redis backs the key cache, rate-limit counters, the ingest escrow, and the live-score cache.
-- Live `analytics.risk` / `analytics.drift` events reach the Control Center over the existing authenticated WebSocket via gateway fan-out.
-- Training data exports as labeled JSONL/CSV (`/v1/analytics/training/export` and the `/api/analytics/training/export` admin proxy); raw windows are available via `/v1/analytics/historic/windows`.
+- The analytics microservice ingests gateway telemetry via the webhook and **re-scores
+  every new window live** against the adaptive EWMA reference; no gateway request path
+  blocks on analytics availability.
+- Risk labels follow the top-3-PCA rule: any top-3 PC `z ≤ −1.5 or z ≥ +1.5` ⇒ **high**
+  (direction-aware), `|z| ∈ [1.0, 1.5)` ⇒ **watch**, otherwise **normal**; the supporting
+  Hotelling `T²` / `F-χ²` probability is also surfaced. Drift flags (PSI / KS / MMD,
+  loading shift) are reported over historic windows and live.
+- PCA retains up to `ANALYTICS_PCA_COMPONENTS` (6) components on the current rolling
+  window; per-window components, eigenvalues, and per-feature loadings are stored and
+  served (`/api/analytics/pca`), and the UI cycles PC1–PC6 with per-feature top-loading
+  and label highlight/filter.
+- SQLite stores request and window rows (features, `context`, PCs, a learned numeric
+  embedding, and a separate semantic embedding) with `sqlite-vec` indexes for
+  nearest-neighbor lookback; the db file is on an external mount. Redis backs the key
+  cache, rate-limit counters, the ingest escrow, and the live-score cache, and is
+  persisted (volume + appendonly) with its contents surfaced in the Warehouse view.
+- Live `analytics.risk` / `analytics.drift` / `analytics.pca` / `training.*` /
+  `pipeline.*` / `store.*` events reach the Control Center over the authenticated WebSocket
+  via gateway fan-out AND over the SSE stream `GET /api/analytics/stream`; the UI holds a
+  live connection on both.
+- The Control Center exposes the orchestrator UI: dashboard test/sync buttons, the
+  Analytics card (ML results + compute time, temperature, ML CPU/mem), Connections,
+  Pipelines (usable endpoints + UI-registered pipelines), Warehouse (SQL + Redis),
+  Logs (incl. `analytics.webhook` entries), Documents, and How-to-use.
+- Analytics data is reachable only through admin-proxied `/api/analytics/*` on `:8080`;
+  `:8081` is never published. The external Qwen project reads historic + live analytics
+  through the same gateway proxy/SSE.
+- Training data exports as labeled JSONL/CSV (`/v1/analytics/training/export` and the
+  `/api/analytics/training/export` admin proxy); raw windows are available via
+  `/v1/analytics/historic/windows`; in-app training (`POST /api/analytics/training/start`)
+  produces artifacts under `/opt/qwen-ml` and `analytics` hot-reloads them.
 - Transmitted metrics remain numeric-only — never prompt, response, or reasoning content.
 
 ## 21. Design Principles
