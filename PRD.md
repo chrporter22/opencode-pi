@@ -401,11 +401,12 @@ gateway-proxied; `:8081` is never exposed to the LAN.
     its input tensor. Windowed aggregates drive historic drift analysis; per-request features
     drive the live serving path.
 58. **Ingest webhook.** The gateway pushes batched request records + window aggregates to
-    `POST /v1/analytics/ingest` (shared secret `INGEST_SECRET`). Push cadence is deferred
-    (TBD). When analytics is unreachable, batches queue in Redis with a bounded escrow and
-    flush on reconnect — no loss, no backpressure on inference. Ingested records stay
-    numeric-only, preserving §6.7 #33. Incoming webhook batches surface in the live log and
-    `/api/logs` as `analytics.webhook` entries (batch size, record count, latency, auth result).
+    `POST /v1/analytics/ingest` (shared secret `INGEST_SECRET`). The gateway pusher primes 5s
+    after boot, then pushes every `ANALYTICS_FEATURE_WINDOW_SEC`. When analytics is
+    unreachable, windows queue in the gateway's bounded in-memory escrow (48) and flush on
+    reconnect — no loss, no backpressure on inference. Ingested records stay numeric-only,
+    preserving §6.7 #33. Incoming webhook batches surface in the live log and `/api/logs` as
+    `analytics.webhook` entries (batch size, record count, latency, auth result).
 59. **Adaptive EWMA reference.** Reference statistics (per-feature mean/σ, PCA loadings)
     adapt with slow exponential decay (`ANALYTICS_EWMA_DECAY`) rather than being frozen, so
     risk reads as "drift from the recent norm". A manual re-fit endpoint is provided.
@@ -973,19 +974,25 @@ Configuration is controlled through environment variables (`.env`, loaded by Doc
 | `AUTO_UPDATE_INTERVAL`  | Update check interval when auto-update is on  | `24h`                       |
 | `ANALYTICS_PORT`        | Analytics microservice port                   | `8081`                      |
 | `ANALYTICS_URL`         | Base URL for gateway → analytics calls        | `http://analytics:8081`     |
+| `ANALYTICS_GATEWAY_URL` | Base URL for analytics → gateway push         | `http://gateway-dev:8080`   |
 | `INGEST_SECRET`         | Shared secret for the analytics webhook       | (required)                  |
 | `REDIS_URL`             | Redis connection string                       | `redis://redis:6379`        |
 | `ANALYTICS_FEATURE_WINDOW_SEC` | Feature aggregation window            | `60`                        |
 | `ANALYTICS_CONTEXT_WINDOWS`    | Context windows fed to the model       | `12`                        |
-| `ANALYTICS_EWMA_DECAY`  | EWMA reference decay per window               | `0.005`                     |
+| `ANALYTICS_EWMA_DECAY`  | EWMA reference decay per window               | `0.1`                       |
 | `ANALYTICS_ML_DIR`      | Host ML artifacts dir (TFLite, checkpoints)   | `/opt/qwen-ml`              |
-| `ANALYTICS_DB_FILE`     | SQLite store file (external mount)            | `/var/lib/analytics/analytics.db` |
+| `ANALYTICS_DB_FILE`     | SQLite store file (external mount)            | `/data/analytics.db`        |
 | `ANALYTICS_PCA_COMPONENTS` | Max PCA components retained                | `6`                         |
 | `ANALYTICS_PCA_WATCH_Z` | Watch-band σ threshold on top-3 PC z-scores   | `1.0`                       |
 | `ANALYTICS_PCA_HIGH_Z`  | High-risk σ threshold (`≤ −h or ≥ +h` trips)  | `1.5`                       |
-| `ANALYTICS_EMBED_ENABLED` | Enable lookalike embedding stores            | `true`                      |
+| `ANALYTICS_EMBED_ENABLED` | Enable lookalike embedding stores            | `false`                     |
 | `ANALYTICS_EMBED_MODEL` | Transformer embedder model id (semantic store)| (unset)                     |
-| `ANALYTICS_TRAIN_URL`   | Analytics → training service base URL         | `http://analytics-train:8082` |
+| `ANALYTICS_TRAIN_MIN_ROWS` | Labeled windows before first build         | `4000`                      |
+| `ANALYTICS_TRAIN_EPOCHS` | Base epoch budget per random-search trial    | `10`                        |
+| `ANALYTICS_TRAIN_BATCH` | Default batch size                             | `64`                        |
+| `ANALYTICS_TRAIN_TRIALS` | Random-search hyperparameter trials/run      | `5`                         |
+| `ANALYTICS_TRAIN_VALIDATION` | Validation split fraction                  | `0.2`                       |
+| `ANALYTICS_TRAIN_SEED`  | Random-search seed                             | `7`                         |
 | `REDIS_PERSISTENT`      | Persist Redis to disk (volume + appendonly)   | `true`                      |
 
 Notes:

@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import express from "express";
 import { loadConfig } from "./config.js";
@@ -14,6 +15,7 @@ import { opsRouter } from "./routes/ops.js";
 import { v1Router } from "./routes/v1.js";
 import { ensureModelAction } from "./model/actions/ensure-model.action.js";
 import { createLlamaSupervisor } from "./modules/llama/supervisor.js";
+import { createAnalyticsPusher } from "./modules/analytics/pusher.js";
 
 const config = loadConfig();
 const auth = createAuth({ inferenceKey: config.keys.inference, adminKey: config.keys.admin });
@@ -35,6 +37,51 @@ app.disable("x-powered-by");
 
 app.use(healthRouter());
 
+const analyticsPusher = config.analytics.url && config.analytics.ingestSecret
+  ? createAnalyticsPusher({
+      url: config.analytics.url,
+      ingestSecret: config.analytics.ingestSecret,
+      windowSec: config.analytics.windowSec,
+      requests,
+      metrics,
+      logger: log,
+    })
+  : null;
+
+let wsServer!: ReturnType<typeof startWsServer>;
+
+function safeCompare(a: string, b: string): boolean {
+  const ba = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  return ba.length > 0 && ba.length === bb.length && timingSafeEqual(ba, bb);
+}
+
+app.post(
+  "/api/analytics/scores",
+  (req, res, next) => {
+    const header = req.headers["x-ingest-secret"];
+    const ok = typeof header === "string" && !!config.analytics.ingestSecret &&
+      safeCompare(header, config.analytics.ingestSecret);
+    if (!ok) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    next();
+  },
+  express.json({ limit: "1mb" }),
+  (req, res) => {
+    const payload = req.body as Record<string, unknown> | undefined;
+    if (payload && typeof payload === "object" && typeof payload.type === "string" &&
+        (payload.type.startsWith("analytics.") ||
+         payload.type.startsWith("training.") ||
+         payload.type === "pca" ||
+         payload.type.startsWith("store."))) {
+      wsServer.broadcast(payload);
+    }
+    res.json({ ok: true });
+  }
+);
+
 app.use(
   "/api",
   requireAuth(auth, "admin"),
@@ -51,7 +98,7 @@ app.use("/v1", requireAuth(auth, "inference"), v1Router({ config, state, logger:
 app.use(express.static(path.resolve("public")));
 
 const httpServer = createServer(app);
-const wsServer = startWsServer({ httpServer, auth, state, metrics, logger: log, requests });
+wsServer = startWsServer({ httpServer, auth, state, metrics, logger: log, requests });
 
 let shuttingDown = false;
 let bootstrapDone = false;
@@ -94,6 +141,7 @@ function shutdown(signal: string): void {
   log.info(`Shutting down (${signal})`);
   state.setGateway("stopping");
   metrics.stop();
+  analyticsPusher?.stop();
   wsServer.close();
   void llamaSupervisor.stop();
   httpServer.close(() => {
@@ -111,5 +159,6 @@ httpServer.listen(config.gateway.port, config.gateway.host, () => {
   state.setGateway("online");
   log.info("Gateway ready");
   metrics.start();
+  analyticsPusher?.start();
   void bootstrapModel().then(() => llamaSupervisor.start());
 });

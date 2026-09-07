@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Request, Response } from "express";
 import type { Config } from "../config.js";
 import type { Logger } from "../logger.js";
 import type { Metrics } from "../metrics.js";
@@ -162,5 +163,176 @@ export function controlRouter(deps: ControlDeps): Router {
     }
   });
 
+  router.get("/analytics/risk", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/risk");
+  });
+  router.get("/analytics/pca", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/pca");
+  });
+  router.get("/analytics/historic/windows", async (req, res) => {
+    await proxyToAnalytics(
+      deps,
+      res,
+      `/v1/analytics/historic/windows${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}`
+    );
+  });
+  router.get("/analytics/reference", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/reference");
+  });
+  router.get("/analytics/config", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/config");
+  });
+  router.get("/analytics/warehouse/sql", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/warehouse/sql");
+  });
+  router.get("/analytics/warehouse/redis", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/warehouse/redis");
+  });
+  router.post("/analytics/warehouse/query", async (req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/warehouse/query", "POST", req.body);
+  });
+  router.get("/analytics/warehouse/raw/windows", async (req, res) => {
+    await proxyToAnalytics(deps, res, `/v1/analytics/warehouse/raw/windows${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}`);
+  });
+  router.get("/analytics/warehouse/raw/requests", async (req, res) => {
+    await proxyToAnalytics(deps, res, `/v1/analytics/warehouse/raw/requests${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}`);
+  });
+  router.get("/analytics/training/status", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/training/status");
+  });
+  router.post("/analytics/training/start", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/training/start", "POST");
+  });
+  router.post("/analytics/rebaseline", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/rebaseline", "POST");
+  });
+  router.get("/analytics/meta", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/meta");
+  });
+  router.post("/analytics/infer", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/infer", "POST");
+  });
+  router.put("/analytics/config", async (req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/config", "PUT", req.body);
+  });
+  router.get("/analytics/pca/cloud", async (req, res) => {
+    await proxyToAnalytics(
+      deps,
+      res,
+      `/v1/analytics/pca/cloud${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}`
+    );
+  });
+  router.get("/analytics/latency/history", async (req, res) => {
+    await proxyToAnalytics(
+      deps,
+      res,
+      `/v1/analytics/latency/history${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}`
+    );
+  });
+  router.get("/analytics/models", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/models");
+  });
+  router.get("/analytics/models/:id", async (_req, res) => {
+    await proxyToAnalytics(deps, res, `/v1/analytics/models/${encodeURIComponent(_req.params.id)}`);
+  });
+  router.put("/analytics/models/:id", async (req, res) => {
+    await proxyToAnalytics(deps, res, `/v1/analytics/models/${encodeURIComponent(req.params.id)}`, "PUT", req.body);
+  });
+  router.delete("/analytics/models/:id", async (req, res) => {
+    await proxyToAnalytics(deps, res, `/v1/analytics/models/${encodeURIComponent(req.params.id)}`, "DELETE");
+  });
+  router.get("/analytics/training/runs", async (req, res) => {
+    await proxyToAnalytics(
+      deps,
+      res,
+      `/v1/analytics/training/runs${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}`
+    );
+  });
+
+  router.get("/analytics/stream", async (_req, res) => {
+    await proxyAnalyticsStream(deps, res);
+  });
+
   return router;
+}
+
+function analyticsBase(deps: ControlDeps): string | undefined {
+  return deps.config.analytics.url && deps.config.analytics.ingestSecret
+    ? deps.config.analytics.url
+    : undefined;
+}
+
+async function proxyToAnalytics(
+  deps: ControlDeps,
+  res: Response,
+  path: string,
+  method: "GET" | "POST" | "PUT" | "DELETE" = "GET",
+  body?: unknown
+): Promise<void> {
+  const base = analyticsBase(deps);
+  if (!base) {
+    res.status(503).json({ error: "analytics not configured" });
+    return;
+  }
+  try {
+    const headers: Record<string, string> = {
+      "x-ingest-secret": deps.config.analytics.ingestSecret || "",
+    };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    const upstream = await fetch(`${base}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10_000),
+    });
+    const json = await upstream.json().catch(() => ({}));
+    res.status(upstream.status).json(json);
+  } catch (err) {
+    deps.logger.warn(`analytics proxy ${path} failed: ${(err as Error).message}`);
+    res.status(502).json({ error: "analytics unreachable", detail: (err as Error).message });
+  }
+}
+
+async function proxyAnalyticsStream(deps: ControlDeps, res: Response): Promise<void> {
+  const base = analyticsBase(deps);
+  if (!base) {
+    res.status(503).json({ error: "analytics not configured" });
+    return;
+  }
+  let upstream: Awaited<ReturnType<typeof fetch>>;
+  try {
+    upstream = await fetch(`${base}/v1/analytics/stream`, {
+      headers: { "x-ingest-secret": deps.config.analytics.ingestSecret || "" },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    deps.logger.warn(`analytics stream connect failed: ${(err as Error).message}`);
+    res.status(502).json({ error: "analytics unreachable", detail: (err as Error).message });
+    return;
+  }
+  if (!upstream.ok || !upstream.body) {
+    res.status(upstream.status).json({ error: "analytics stream failed" });
+    return;
+  }
+  res.status(200);
+  res.set("content-type", "text/event-stream");
+  res.set("cache-control", "no-cache");
+  res.set("x-accel-buffering", "no");
+  res.set("connection", "keep-alive");
+  res.flushHeaders();
+  const controller = new AbortController();
+  res.on("close", () => controller.abort());
+  const reader = upstream.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(Buffer.from(value));
+    }
+  } catch {
+    // client disconnected / upstream closed
+  } finally {
+    reader.releaseLock();
+    res.end();
+  }
 }

@@ -15,6 +15,8 @@ services:
       - /opt/qwen-model:/models
       - /etc/os-release:/host-os-release:ro
       - /proc/mounts:/host-mounts:ro
+    depends_on:
+      - redis
     restart: unless-stopped
 
   gateway-test:
@@ -29,3 +31,43 @@ services:
     volumes:
       - ./gateway:/app
       - /app/node_modules
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  analytics:
+    build:
+      context: .
+      dockerfile: analytics/Dockerfile
+    env_file:
+      - .env
+    environment:
+      - ANALYTICS_PORT=8081
+      - ANALYTICS_GATEWAY_URL=http://gateway-dev:8080
+    volumes:
+      - analytics-state:/data
+      - /opt/qwen-ml:/opt/qwen-ml
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  analytics-test:
+    build:
+      context: .
+      dockerfile: analytics/Dockerfile
+    command: pytest -q
+    env_file:
+      - .env
+    environment:
+      - ANALYTICS_DB_FILE=/app/tests/analytics-test.db
+      - REDIS_URL=
+    volumes:
+      - ./analytics:/app
+
+volumes:
+  redis-data:
+  analytics-state:

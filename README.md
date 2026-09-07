@@ -139,15 +139,21 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | `ANALYTICS_URL`       | Gateway → analytics base URL     | `http://analytics:8081` |
 | `INGEST_SECRET`       | Shared secret for the webhook    | required      |
 | `REDIS_URL`           | Redis connection string          | `redis://redis:6379` |
+| `ANALYTICS_GATEWAY_URL` | Analytics → gateway base URL   | `http://gateway-dev:8080` |
 | `ANALYTICS_FEATURE_WINDOW_SEC` | Feature aggregation window | `60`    |
 | `ANALYTICS_CONTEXT_WINDOWS` | Context windows fed to model   | `12`        |
-| `ANALYTICS_EWMA_DECAY`| EWMA reference decay per window  | `0.005`       |
+| `ANALYTICS_EWMA_DECAY`| EWMA reference decay per window  | `0.1`       |
 | `ANALYTICS_ML_DIR`    | Host ML artifacts dir            | `/opt/qwen-ml` |
-| `ANALYTICS_DB_FILE`   | SQLite store file (external mount) | `/var/lib/analytics/analytics.db` |
+| `ANALYTICS_DB_FILE`   | SQLite store file (external mount) | `/data/analytics.db` |
 | `ANALYTICS_PCA_COMPONENTS` | Max PCA components retained  | `6`            |
 | `ANALYTICS_PCA_WATCH_Z` / `ANALYTICS_PCA_HIGH_Z` | Top-3-PC σ thresholds (watch / high) | `1.0` / `1.5` |
 | `ANALYTICS_EMBED_ENABLED` / `ANALYTICS_EMBED_MODEL` | Lookalike embedding stores / embedder | `true` / (unset) |
-| `ANALYTICS_TRAIN_URL` | Analytics → training base URL      | `http://analytics-train:8082` |
+| `ANALYTICS_TRAIN_MIN_ROWS` | Labeled windows before first build | `4000` |
+| `ANALYTICS_TRAIN_EPOCHS` | Base epoch budget per trial | `10` |
+| `ANALYTICS_TRAIN_BATCH` | Default batch size | `64` |
+| `ANALYTICS_TRAIN_TRIALS` | Random-search hyperparameter trials | `5` |
+| `ANALYTICS_TRAIN_VALIDATION` | Validation split fraction | `0.2` |
+| `ANALYTICS_TRAIN_SEED` | Random-search seed | `7` |
 | `REDIS_PERSISTENT`    | Persist Redis (volume + appendonly) | `true`        |
 
 ## API summary
@@ -207,7 +213,7 @@ rolling `requestsPerMinute` on `/api/system` / `/api/metrics` / `system.metrics`
 llama-server's own `slot print_timing` accounting for streams (llama's streaming chunks carry
 no `usage`); unknown counts display as `—`.
 
-## Analytics & risk layer (planned — docs refreshed 2026-09-06)
+## Analytics & risk layer (live 2026-09-07)
 
 A separate Python microservice (`analytics/`, port `8081`, internal) gives the control
 center a live ML layer for drift detection and risk scoring — **numeric-only telemetry,
@@ -216,41 +222,43 @@ never published, and the external Qwen project reads the same admin-proxied
 `/api/analytics/*` surface on `:8080`.
 
 - **Ingest webhook.** The gateway pushes per-request records and 60s window aggregates to
-  `POST /v1/analytics/ingest` (shared secret). On outage, batches queue in Redis and flush on
-  reconnect — no loss, no inference backpressure. (Push cadence is TBD.) Incoming webhook
-  batches appear in the live log as `analytics.webhook` entries.
+  `POST /v1/analytics/ingest` (shared secret) on a 5s prime then every
+  `ANALYTICS_FEATURE_WINDOW_SEC`. On outage, windows queue in an in-memory bounded backlog
+  (48) and flush on reconnect — no inference backpressure.
 - **Context windows.** Features (per-request token counts/duration/tok/s, window
   requests/min + error rate + p95/p99, system cpu/mem/temp/disk at inference time) roll into
   60s windows; the model consumes the last `ANALYTICS_CONTEXT_WINDOWS` windows as its input
   tensor.
 - **Adaptive EWMA reference.** Mean/σ and PCA loadings decay slowly, so risk reads as
-  "drift from the recent norm"; a manual re-fit endpoint is available.
+  "drift from the recent norm"; `POST /api/analytics/rebaseline` re-fits from stored windows.
 - **PCA + top-3-PC label.** Retains up to `ANALYTICS_PCA_COMPONENTS` (6) components over the
   current rolling window. **High risk** whenever any top-3 principal component is
   `z ≤ −1.5 or z ≥ +1.5` (signed — both directions trip); **watch** for `1.0 ≤ |z| < 1.5`;
-  otherwise **normal**. Hotelling `T²` supports the label with an `F/χ²` tail probability.
-  Drift via feature PSI, KS/MMD on PC scores, and loading shift.
-- **ML serving layer.** Every new window triggers a live re-score; results are served over
-  `analytics.risk` / `analytics.pca` / `analytics.drift` WS events **and** the SSE stream
-  `GET /api/analytics/stream` (admin-proxied), so the UI and external consumers hold a live
-  connection on both.
-- **SQLite vector/embedding store + warehoused Redis.** Windows/requests carry feature
-  vectors, `context` tensors, PCs/loadings, a **learned numeric embedding**, and a separate
-  **semantic embedding** (transformer over a content-free numeric window encoding); two
-  `sqlite-vec` indexes serve lookalike search, and neither embedding enters PCA/risk math.
-  SQLite is on an external mount; Redis is persisted (volume + appendonly) and both surface
-  in the UI Warehouse view.
-- **TF-Lite NN served from in-app training.** Artifacts train in a `analytics-train` compose
-  service, startable from the UI, that writes to `/opt/qwen-ml` (host mount); the analytics
-  service hot-reloads them, so TFLite serving goes live once artifact #1 exists. Python
-  kernels are scoped to port to C++ later.
-- **Live result transport — gateway fan-out + SSE.** Analytics POSTs scores/drift to the
-  gateway, which broadcasts `analytics.*`, `training.*`, `pipeline.*`, and `store.*` events
-  over the existing admin `/ws` and the new `/api/analytics/stream` SSE endpoint.
-- **Training data endpoint.** `GET /v1/analytics/training/export` (shared secret) or the
-  admin proxy `GET /api/analytics/training/export` returns labeled JSONL/CSV — each window
-  with `features`, `context`, `pcs`, `risk` and the `normal | watch | high` label
-  auto-derived from the risk model. Raw paging via `GET /v1/analytics/historic/windows`.
+  otherwise **normal**. Hotelling `T²` (pure-Python Jacobi eigh + χ² tail, no scipy)
+  supports the label with an F/χ² tail probability (`confidence = 1 − p`).
+- **Live result transport.** Every new window triggers a live re-score broadcast over the
+  admin `/ws` (`analytics.*`, `training.*`, `store.*`, `pca` events) **and** the SSE stream
+  `GET /api/analytics/stream` (admin-proxied one-hop pipe from analytics `:8081`), so both
+  the UI and the external Qwen client hold live connections. Risk output is the
+  `PcaSummary` contract (`projection`, `components`, `variance`, `eigenvalues`,
+  `totalVariance`, `mean`, `std`, `drift`, `driftClassification`, `risk`, `confidence`,
+  `heartbeat`, `lastRun`); history is `HistoryPoint[]` at
+  `GET /api/analytics/historic/windows`.
+- **SQLite + Redis warehouse.** Windows/requests carry feature vectors, context tensors,
+  PCA loadings/scores and the risk label in SQLite (external mount, WAL); Redis caches
+  `score:latest` and `train:state` (persisted volume + appendonly). Both surface in
+  `GET /api/analytics/warehouse/sql` and `/warehouse/redis`.
+- **In-app TensorFlow training.** The first build happens at
+  `ANALYTICS_TRAIN_MIN_ROWS` labeled windows; afterwards the saved model is loaded and
+  fine-tuned on every new write (storage is never wiped). Each run performs
+  `ANALYTICS_TRAIN_TRIALS` random-search hyperparameter trials (units/layers/dropout/lr/
+  batch/epochs) and logs per-trial **precision, recall, accuracy, F1 and the 3×3 confusion
+  matrix** to the `training_runs` table; every trial streams as a `training.progress` WS/SSE
+  event, and the best model (macro-F1, falling back to accuracy) is exported as SavedModel +
+  TFLite to `/opt/qwen-ml` and announced via `training.done`.
+- **Training data endpoint.** `GET /v1/analytics/historic/windows` returns the labeled
+  window history (`HistoryPoint[]`): `timestamp`, `projection`, `drift`, `risk`.
+  Full labeled export (features + pcs + risk) lands with the dedicated export endpoint.
 
 Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD §6.13, §7.3.
 

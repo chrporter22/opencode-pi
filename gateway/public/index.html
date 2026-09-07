@@ -117,9 +117,10 @@
   .card.full { grid-column: 1 / -1; }
   #dash-sync { order: 0; }
   #dash-sys { order: 1; }
-  #pipe-streams { order: 2; }
-  #dash-model { order: 3; }
-  #dash-stream-card { order: 4; }
+  #dash-model { order: 2; }
+  #dash-analytics { order: 3; }
+  #pipe-streams { order: 4; }
+  #dash-stream-card { order: 5; }
   .dashboard { display: grid; gap: 16px; grid-template-columns: 1fr; }
   @media (min-width: 1024px) {
     .dashboard { grid-template-columns: repeat(3, 1fr); }
@@ -318,6 +319,29 @@
   .prose .k { color: var(--dim); }
   .prose ul { margin: 8px 0 0 18px; padding: 0; }
   .prose li { margin: 3px 0; }
+  .pca-wrap { margin: 4px 0; }
+  .pca-row { display:flex; align-items:center; gap:6px; margin:2px 0; font-size:11px; font-family:var(--mono); }
+  .pca-lbl { width:32px; color:var(--dim); flex:none; text-align:right; }
+  .pca-track { flex:1; position:relative; height:10px; background:var(--input); border-radius:5px; overflow:visible; }
+  .pca-tick { position:absolute; top:0; bottom:0; width:1px; }
+  .pca-tick.tz { background:var(--faint); }
+  .pca-tick.tw { background:#d9a404; opacity:.7; }
+  .pca-tick.th { background:#e04a4a; opacity:.7; }
+  .pca-marker { position:absolute; top:-2px; width:3px; height:14px; border-radius:2px; background:var(--accent); }
+  .pca-lbl-z { width:62px; text-align:right; color:var(--fg); flex:none; }
+  .pca-dist { width:110px; color:var(--dim); flex:none; }
+  .cfgbox { margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:12px; }
+  .cfgbox summary { cursor:pointer; color:var(--dim); font-weight:600; font-size:12px; }
+  .cfg-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(164px,1fr)); gap:6px; margin-top:8px; }
+  .cfg-grid label { display:flex; justify-content:space-between; gap:6px; align-items:center; color:var(--dim); font-size:11.5px; }
+  .cfg-grid input:not([type=checkbox]) { width:72px; background:var(--input); color:var(--fg); border:1px solid var(--border); border-radius:4px; padding:2px 4px; }
+  .cfg-grid label.wide { grid-column:1/-1; justify-content:flex-start; gap:8px; }
+  .cfg-grid label.wide input[type=text] { width:240px; }
+  .feat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:4px; margin-top:8px; }
+  .feat-grid label { display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px; color:var(--dim); }
+  .feat-grid .fv { color:var(--fg); min-width:54px; text-align:right; }
+  .feat-grid input { width:auto; accent-color:var(--accent); }
+  #dash-analytics .actions button { padding:5px 10px; font-size:11.5px; }
 </style>
 </head>
 <body>
@@ -391,6 +415,53 @@
           <div style="height:12px"></div>
           <button id="btnRestart" class="js-restart">Restart model</button>
           <button id="btnUpdate">Update model</button>
+        </div>
+        <div class="card ac-wh full" id="dash-analytics">
+          <h2>Analytics <span id="anLevel" class="chip">—</span> <span id="anNnChip" class="chip">tf-lite —</span></h2>
+          <div class="row"><span class="k">risk</span><span id="anRisk">connecting…</span></div>
+          <div class="row"><span class="k">Hotelling T²</span><span id="anT2">—</span></div>
+          <div class="row"><span class="k">p-value</span><span id="anP">—</span></div>
+          <div class="row"><span class="k">compute ms</span><span id="anMs">—</span></div>
+          <div class="row"><span class="k">windows scored</span><span id="anWin">—</span></div>
+          <div id="pcaBars" class="pca-wrap"></div>
+          <div id="anPca" class="muted" style="font-size:11.5px;font-family:var(--mono);margin:4px 0 2px"></div>
+          <div class="row"><span class="k">telemetry → model</span><span id="anModel" class="chip">—</span></div>
+          <div class="row"><span class="k">input → TF model</span><span id="anIn" style="font-family:var(--mono);font-size:11.5px;word-break:break-word;white-space:normal">—</span></div>
+          <div class="row"><span class="k">TF inference</span><span id="anNn">—</span></div>
+          <div class="row"><span class="k">system / ML speed</span><span id="anSys">—</span></div>
+          <div class="row"><span class="k">ingest</span><span id="anIngest" class="chip">—</span></div>
+          <div class="row"><span class="k">training</span><span id="anTrain">—</span></div>
+          <div class="row"><span class="k">best model</span><span id="anBest">—</span></div>
+          <div class="row"><span class="k">config</span><span id="anCfg" class="muted">—</span></div>
+          <div id="anTrials" class="muted" style="font-size:11px;font-family:var(--mono);line-height:1.5"></div>
+          <div class="row actions" style="margin-top:6px;gap:6px;flex-wrap:wrap">
+            <button id="btnInferNow">Run TF inference</button>
+            <button id="btnMetaNow">Refresh meta</button>
+            <button id="btnTrainNow">Run training</button>
+            <button id="btnRebaseline">Rebaseline</button>
+          </div>
+          <details id="anCfgPanel" class="cfgbox">
+            <summary>Model config & input filters</summary>
+            <div class="cfg-grid">
+              <label>ingest <input type="checkbox" id="cfgIngest"></label>
+              <label>ewma decay <input type="number" id="cfgDecay" step="0.05" min="0.01" max="0.9"></label>
+              <label>context windows <input type="number" id="cfgCtx" min="2" max="200"></label>
+              <label>PCA components <input type="number" id="cfgPca" min="1" max="10"></label>
+              <label>watch σ <input type="number" id="cfgWatch" step="0.1" min="0.1"></label>
+              <label>high σ <input type="number" id="cfgHigh" step="0.1" min="0.1"></label>
+              <label class="wide">cron (5-field UTC) <input type="text" id="cfgCron" placeholder="*/10 * * * *"></label>
+              <label class="wide">next run <input type="text" id="cfgNextRun" readonly></label>
+              <label>train: min rows <input type="number" id="cfgMin" min="10"></label>
+              <label>epochs <input type="number" id="cfgEpochs" min="1"></label>
+              <label>batch <input type="number" id="cfgBatch" min="1"></label>
+              <label>trials <input type="number" id="cfgTrials" min="1"></label>
+              <label>validation <input type="number" id="cfgVal" step="0.05" min="0" max="0.5"></label>
+              <label>seed <input type="number" id="cfgSeed"></label>
+              <label class="wide">watermark (trainedUpTo) <input type="text" id="cfgWm" readonly></label>
+            </div>
+            <div id="cfgFeats" class="feat-grid"></div>
+            <div class="row actions" style="margin-top:6px"><button id="btnSaveCfg">Save config</button></div>
+          </details>
         </div>
         <div class="card ac-evt full" id="dash-stream-card">
           <h2>Live activity</h2>
@@ -479,13 +550,23 @@
             </tbody>
           </table>
         </div>
-        <div class="card ac-wh full" id="conn-planned">
-          <h2>Planned connections</h2>
-          <div class="planned">analytics (:8081 FastAPI) — backend pending (PRD §6.13)</div>
-          <div class="planned">redis (warehoused, compose volume) — backend pending</div>
-          <div class="planned">sqlite + sqlite-vec (external mount) — backend pending</div>
-          <div class="planned">webhook ingest — backend pending</div>
-          <div class="planned">external Qwen client (SSE /api/analytics/stream) — backend pending</div>
+        <div class="card ac-wh" id="conn-wh-sql">
+          <h2>Warehouse · SQLite <span id="cWhSql" class="chip">—</span></h2>
+          <div class="row"><span class="k">engine</span><span>sqlite · analytics:8081</span></div>
+          <div class="row"><span class="k">db</span><span id="cWhSqlPath" style="word-break:break-all">—</span></div>
+          <div class="row"><span class="k">tables</span><span id="cWhSqlTables" style="white-space:normal;font-size:11.5px">—</span></div>
+          <div class="row"><span class="k">windows / requests</span><span id="cWhSqlCount">—</span></div>
+          <div class="row"><span class="k">latency</span><span id="cWhSqlLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cWhSqlSync">—</span></div>
+        </div>
+        <div class="card ac-wh" id="conn-wh-redis">
+          <h2>Warehouse · Redis <span id="cWhRedis" class="chip">—</span></h2>
+          <div class="row"><span class="k">engine</span><span>redis · :6379 (compose volume)</span></div>
+          <div class="row"><span class="k">keys</span><span id="cWhRedisKeys" style="font-family:var(--mono);font-size:11.5px;white-space:normal">—</span></div>
+          <div class="row"><span class="k">memory</span><span id="cWhRedisMem">—</span></div>
+          <div class="row"><span class="k">appendonly</span><span id="cWhRedisAof">—</span></div>
+          <div class="row"><span class="k">latency</span><span id="cWhRedisLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cWhRedisSync">—</span></div>
         </div>
       </div>
     </section>
@@ -511,17 +592,62 @@
           <div class="row"><span class="k">installed</span><span id="pUpAt">—</span></div>
           <textarea class="pnote" id="pnote-update" placeholder="Note (optional)"></textarea>
         </div>
+        <div class="card ac-wh full" id="pipe-warehouse">
+          <h2>analytics warehouse <span id="pWhStatus" class="chip">—</span></h2>
+          <div class="row"><span class="k">pipeline</span><span>ingest → windows · requests → reference → scoring → training_runs → models</span></div>
+          <div class="row"><span class="k">sqlite tables</span><span id="pWhSql" style="white-space:normal;font-size:11.5px">—</span></div>
+          <div class="row"><span class="k">redis backing</span><span id="pWhRedis">—</span></div>
+          <div class="row"><span class="k">scores path</span><span>analytics:8081 → POST /api/analytics/scores → SSE + WS fan-out</span></div>
+          <div class="row"><span class="k">raw history</span><span id="pWhRaw">—</span></div>
+          <textarea class="pnote" id="pnote-warehouse" placeholder="Note (optional)"></textarea>
+        </div>
       </div>
     </section>
 
     <section class="view hide" id="view-warehouse">
       <div class="dashboard">
-        <div class="card ac-wh full">
-          <h2>Warehouse</h2>
-          <div class="planned">Designed but not built yet (PRD §6.13). This panel will surface the analytics warehouse through the gateway proxy (<code>/api/analytics/warehouse/*</code>):</div>
-          <div class="planned"><strong>SQLite</strong> — schema, tables, columns, row counts, raw columns (external mount, container-local)</div>
-          <div class="planned"><strong>Redis</strong> — key inventory by type, TTL, memory, persistence (warehoused volume, appendonly)</div>
-          <div class="planned">Reachability depends on the analytics service (`:8081`, internal to compose).</div>
+        <div class="card ac-wh span2" id="wh-conn">
+          <h2>Warehouse connections <span id="whStatus" class="chip">—</span></h2>
+          <div class="row"><span class="k">sqlite</span><span id="whSqlLine">—</span></div>
+          <div class="row"><span class="k">redis</span><span id="whRedisLine">—</span></div>
+          <div class="row actions" style="margin-top:6px">
+            <button id="btnWhRefresh">Refresh</button>
+            <button id="btnWhRaw">Load raw history</button>
+          </div>
+        </div>
+        <div class="card ac-wh full" id="wh-sql-console">
+          <h2>SQL console <span class="chip">read-only</span></h2>
+          <div class="row"><span class="k">tables</span><span class="muted" style="white-space:normal">windows · requests · reference · training_runs · config · models</span></div>
+          <div class="filter-bar">
+            <button data-sql="SELECT id, window_start, risk, t2, p_value, compute_ms FROM windows ORDER BY window_start DESC LIMIT 20;">windows recent</button>
+            <button data-sql="SELECT id, window_start, feature_vec, risk FROM windows ORDER BY window_start DESC LIMIT 10;">windows + features</button>
+            <button data-sql="SELECT id, started_at, feature_vec, error FROM requests ORDER BY started_at DESC LIMIT 20;">requests</button>
+            <button data-sql="SELECT id, started_at, state, rows, epochs, best, model_file FROM training_runs ORDER BY id DESC LIMIT 10;">training runs</button>
+            <button data-sql="SELECT * FROM models;">models</button>
+            <button data-sql="SELECT id, updated_at, mu, s2, n FROM reference;">reference</button>
+            <button data-sql="SELECT id, updated_at, doc FROM config;">config</button>
+            <button data-sql="PRAGMA table_info(windows);">schema: windows</button>
+          </div>
+          <textarea id="sqlInput" class="pnote" style="min-height:66px" spellcheck="false" placeholder="SELECT …"></textarea>
+          <div class="row actions" style="margin-top:6px">
+            <button id="btnSqlRun">Run SQL</button>
+          </div>
+          <div id="sqlStatus" class="muted" style="margin:6px 0 4px"></div>
+          <div class="table-scroll" id="sqlOut"></div>
+        </div>
+        <div class="card ac-wh full" id="wh-raw">
+          <h2>Raw historical data <span id="whRawKind" class="chip">windows</span></h2>
+          <div class="row actions" style="margin-bottom:6px">
+            <select id="whRawLimit">
+              <option value="10">10 rows</option>
+              <option value="25" selected>25 rows</option>
+              <option value="50">50 rows</option>
+            </select>
+            <button id="btnWhWindows">windows</button>
+            <button id="btnWhRequests">requests</button>
+          </div>
+          <div id="whRawStatus" class="muted" style="margin:2px 0 4px"></div>
+          <div class="table-scroll" id="whRawOut"></div>
         </div>
       </div>
     </section>
@@ -745,6 +871,7 @@
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hide", v.id !== "view-" + name));
     document.querySelectorAll("#sideNav a").forEach((a) => a.classList.toggle("active", a.dataset.view === name));
     if (name === "metrics") renderMetrics(true);
+    if (name === "warehouse") { loadWarehouse(); loadRaw("windows", 25); }
     window.scrollTo(0, 0);
   }
   document.querySelectorAll("#sideNav a").forEach((a) => {
@@ -882,11 +1009,140 @@
         loadHost();
         renderConnections();
         renderPipelines();
+        loadAnalytics();
+        loadWarehouse();
         try { await loadRequests(); } catch {}
       }
     } catch (e) {
       dot.className = "dot err";
     }
+  }
+
+  let anRisk = null, anCfg = null, anMeta = null, anTrain = null, anBestData = null, anTrialHtml = "", cfgFormDirty = false;
+  async function loadAnalytics() {
+    const hdrs = headers();
+    if (!hdrs) return;
+    try {
+      const [risk, cfg, train, meta] = await Promise.all([
+        (await fetch("/api/analytics/risk", { headers: hdrs })).json(),
+        (await fetch("/api/analytics/config", { headers: hdrs })).json(),
+        (await fetch("/api/analytics/training/status", { headers: hdrs })).json(),
+        (await fetch("/api/analytics/meta", { headers: hdrs })).json(),
+      ]);
+      anRisk = risk; anCfg = cfg; anTrain = train; anMeta = meta;
+      renderAnalytics();
+    } catch {
+      chip("anLevel", "—");
+      $s("anRisk", "analytics offline");
+      chip("anModel", "—");
+      $s("anTrain", "—");
+    }
+  }
+  function renderAnalytics() {
+    const risk = anRisk || {};
+    const cfg = anCfg || {};
+    const train = anTrain || {};
+    const meta = anMeta || {};
+    // level chip
+    if (!risk.level) chip("anLevel", "—");
+    else {
+      const lvEl = chip("anLevel", risk.level);
+      lvEl.classList.remove("ok", "warn", "err");
+      lvEl.classList.add(risk.level === "high" ? "err" : risk.level === "normal" ? "ok" : "warn");
+    }
+    // nn chip
+    const nnLabel = risk.nnRisk || "—";
+    const nnEl = chip("anNnChip", "tf-lite " + nnLabel);
+    if (risk.nnRisk) nnEl.classList.add(risk.nnRisk === "high" ? "err" : risk.nnRisk === "normal" ? "ok" : "warn");
+    $s("anRisk", risk.level ?? "no score yet");
+    $s("anT2", risk.t2 != null ? risk.t2.toFixed(4) : "—");
+    $s("anP", risk.pValue != null ? risk.pValue.toFixed(5) : "—");
+    $s("anMs", risk.computeMs != null ? risk.computeMs.toFixed(2) : "—");
+    $s("anWin", String(risk.windowsScored ?? 0));
+    chip("anModel", train.modelActive ? "active" : "off");
+    $s("anIngest", meta.ingestEnabled === false ? "paused" : "on");
+    // training
+    const trainState = train.state ?? "idle";
+    $s("anTrain", trainState === "running" ? "training (" + (train.rows ?? 0) + " rows)" :
+      (train.error ? "error (" + train.error.slice(0, 80) + ")" :
+        (train.modelActive ? (train.trainedUpTo ? "model — since " + train.trainedUpTo : "model active") :
+          (train.rows != null && train.minRows ? train.rows + " / " + train.minRows + " rows" : "idle"))));
+    const best = train.best || anBestData || null;
+    if (best && best.metrics) {
+      const m = best.metrics;
+      $s("anBest", "F1 " + (m.f1 != null ? m.f1.toFixed(3) : "—") + " · acc " + (m.accuracy != null ? m.accuracy.toFixed(3) : "—") + " · P " + (m.precision != null ? m.precision.toFixed(3) : "—") + " · R " + (m.recall != null ? m.recall.toFixed(3) : "—"));
+    } else $s("anBest", "—");
+    // config line
+    const cfgParts = [];
+    if (cfg.featureWindowSec) cfgParts.push("window " + cfg.featureWindowSec + "s");
+    if (cfg.contextWindows) cfgParts.push("ctx " + cfg.contextWindows);
+    if (cfg.ewmaDecay != null) cfgParts.push("decay " + cfg.ewmaDecay);
+    if (cfg.pcaComponents) cfgParts.push("pca " + cfg.pcaComponents);
+    if (cfg.highZ) cfgParts.push("high " + cfg.highZ + "σ");
+    if (cfg.watchZ) cfgParts.push("watch " + cfg.watchZ + "σ");
+    if (cfg.train) cfgParts.push("trials " + cfg.train.trials + " epochs " + cfg.train.epochs);
+    if (cfg.redisAvailable) cfgParts.push("redis");
+    $s("anCfg", cfgParts.join(" · ") || "—");
+    // PCA bars with thresholds
+    renderPcaBars(risk, cfg);
+    $s("anPca", (risk.variance || []).slice(0, 4).map((v, i) => "PV" + (i + 1) + " " + (v * 100).toFixed(0) + "%").join("  ") || "—");
+    // input → TF model
+    const inFeats = meta.inputFeatures || [];
+    if (inFeats.length) {
+      const filterMask = meta.inputFilter || [];
+      const disabled = new Set((filterMask || []).filter((f) => !f.enabled).map((f) => f.name));
+      $s("anIn", inFeats.filter((f) => !disabled.has(f.name)).slice(0, 12).map((f) => f.name.split(/(?=[A-Z])/)[0] + " " + (typeof f.value === "number" ? f.value.toFixed(2) : f.value)).join(" · "));
+    } else $s("anIn", "—");
+    // TF inference
+    const nnMs = risk.nnLatencyMs ?? meta.latency?.lastNnMs;
+    const nnProb = risk.nnProb;
+    const nnStr = risk.nnRisk
+      ? (risk.nnRisk + (nnProb ? " [" + nnProb.map((p) => (p * 100).toFixed(0) + "%").join(" · ") + "]" : "") + (nnMs != null ? " · " + nnMs.toFixed(1) + "ms" : ""))
+      : (meta.model?.active ? "model ready" : "no model");
+    $s("anNn", nnStr);
+    // system / ML speed
+    const sys = meta.system || {};
+    const lat = meta.latency || {};
+    $s("anSys", [
+      sys.cpuFrac != null ? "cpu " + (sys.cpuFrac * 100).toFixed(1) + "%" : null,
+      sys.memFrac != null ? "mem " + (sys.memFrac * 100).toFixed(0) + "%" : null,
+      sys.tempC != null ? sys.tempC.toFixed(1) + "°C" : null,
+      sys.diskFrac != null ? "disk " + (sys.diskFrac * 100).toFixed(0) + "%" : null,
+      lat.lastComputeMs != null ? "pca " + lat.lastComputeMs.toFixed(1) + "ms" : null,
+      lat.nnRuns != null ? "nn×" + lat.nnRuns : null,
+    ].filter(Boolean).join(" · ") || "—");
+    // populate config form
+    if (!cfgFormDirty) populateCfgForm(cfg, meta);
+  }
+  function renderPcaBars(risk, cfg) {
+    const wrap = q("pcaBars"); if (!wrap) return;
+    const scores = (risk.pcScores || []).slice(0, 4);
+    if (!scores.length) { wrap.innerHTML = ""; return; }
+    const watch = parseFloat(cfg.watchZ) || 1.0, high = parseFloat(cfg.highZ) || 1.5;
+    const scale = Math.max(high * 1.6, ...scores.map((c) => Math.abs(c.z) * 1.1), 0.5);
+    function pct(z) { return Math.max(0, Math.min(100, 50 + (z / scale) * 50)); }
+    function distInfo(z) {
+      const a = Math.abs(z);
+      if (a <= watch) return "normal " + (a / watch * 100).toFixed(0) + "% into watch band";
+      if (a <= high) return "watch +" + ((a - watch) / (high - watch) * 100).toFixed(0) + "%";
+      return "high +" + ((a - high) / high * 100).toFixed(0) + "% past";
+    }
+    wrap.innerHTML = scores.map((c) => {
+      const color = Math.abs(c.z) >= high ? "#e04a4a" : Math.abs(c.z) >= watch ? "#d9a404" : "var(--accent)";
+      return '<div class="pca-row">' +
+        '<span class="pca-lbl">PC' + (c.i + 1) + '</span>' +
+        '<span class="pca-track">' +
+          '<span class="pca-tick tz" style="left:' + pct(0) + '%"></span>' +
+          '<span class="pca-tick tw" style="left:' + pct(-watch) + '%"></span>' +
+          '<span class="pca-tick tw" style="left:' + pct(watch) + '%"></span>' +
+          '<span class="pca-tick th" style="left:' + pct(-high) + '%"></span>' +
+          '<span class="pca-tick th" style="left:' + pct(high) + '%"></span>' +
+          '<span class="pca-marker" style="left:' + pct(c.z) + '%;background:' + color + '" title="z=' + c.z.toFixed(2) + '"></span>' +
+        '</span>' +
+        '<span class="pca-lbl-z" style="color:' + color + '">z ' + c.z.toFixed(2) + '</span>' +
+        '<span class="pca-dist">' + distInfo(c.z) + '</span>' +
+      '</div>';
+    }).join("");
   }
 
   const modelRestartState = { inFlight: false, pollId: null };
@@ -984,7 +1240,211 @@
   q("btnUpdate").addEventListener("click", () => act("/api/model/update", q("btnUpdate")));
   q("btnSyncRestart").addEventListener("click", restartModel);
   q("btnSyncUpdate").addEventListener("click", () => act("/api/model/update", q("btnSyncUpdate")));
+  q("btnTrainNow").addEventListener("click", () => act("/api/analytics/training/start", q("btnTrainNow")));
+  q("btnRebaseline").addEventListener("click", () => act("/api/analytics/rebaseline", q("btnRebaseline")));
+  q("btnInferNow").addEventListener("click", syncInfer);
+  q("btnMetaNow").addEventListener("click", syncMeta);
+  q("btnSaveCfg").addEventListener("click", saveCfg);
+  ["cfgIngest","cfgDecay","cfgCtx","cfgPca","cfgWatch","cfgHigh","cfgCron","cfgMin","cfgEpochs","cfgBatch","cfgTrials","cfgVal","cfgSeed"].forEach((id) => {
+    const el = q(id); if (el) el.addEventListener("input", () => { cfgFormDirty = true; });
+  });
+  async function syncInfer() {
+    const hdrs = headers();
+    if (!hdrs) { setModelAction("Enter admin key", "err"); return; }
+    q("btnInferNow").disabled = true;
+    setModelAction("running TF inference…", "warn");
+    try {
+      const r = await fetch("/api/analytics/infer", { method: "POST", headers: hdrs });
+      const body = await r.json();
+      if (r.ok) {
+        if (body.nnRisk) { chip("anNnChip", "tf-lite " + body.nnRisk); }
+        if (anMeta && anMeta.latency) { anMeta.latency.lastNnMs = body.nnLatencyMs; anMeta.latency.nnRuns = (anMeta.latency.nnRuns || 0) + 1; }
+        setModelAction("inference " + body.nnRisk + " in " + (body.nnLatencyMs != null ? body.nnLatencyMs.toFixed(1) + "ms" : "?"), "ok");
+        renderAnalytics();
+        setTimeout(clearModelAction, 2500);
+      } else {
+        setModelAction("infer " + r.status + ": " + (body.detail || body.error || JSON.stringify(body)), "err");
+      }
+    } catch (e) { setModelAction("infer failed: " + e.message, "err"); }
+    finally { q("btnInferNow").disabled = false; refresh(); }
+  }
+  async function syncMeta() {
+    const hdrs = headers();
+    if (!hdrs) { setModelAction("Enter admin key", "err"); return; }
+    q("btnMetaNow").disabled = true;
+    setModelAction("refreshing meta…", "warn");
+    try {
+      const r = await fetch("/api/analytics/meta", { headers: hdrs });
+      anMeta = await r.json();
+      renderAnalytics();
+      setModelAction("meta refreshed", "ok");
+      setTimeout(clearModelAction, 2000);
+    } catch (e) { setModelAction("meta failed: " + e.message, "err"); }
+    finally { q("btnMetaNow").disabled = false; }
+  }
+  function populateCfgForm(cfg, meta) {
+    q("cfgIngest").checked = meta.ingestEnabled !== false;
+    q("cfgDecay").value = cfg.ewmaDecay ?? "";
+    q("cfgCtx").value = cfg.contextWindows ?? "";
+    q("cfgPca").value = cfg.pcaComponents ?? "";
+    q("cfgWatch").value = cfg.watchZ ?? "";
+    q("cfgHigh").value = cfg.highZ ?? "";
+    q("cfgCron").value = cfg.cron || "";
+    q("cfgNextRun").value = cfg.nextRun ? new Date(cfg.nextRun).toLocaleString() : "—";
+    q("cfgWm").value = cfg.watermark ? new Date(cfg.watermark).toLocaleString() : "—";
+    const t = cfg.train || {};
+    q("cfgMin").value = t.minRows ?? "";
+    q("cfgEpochs").value = t.epochs ?? "";
+    q("cfgBatch").value = t.batch ?? "";
+    q("cfgTrials").value = t.trials ?? "";
+    q("cfgVal").value = t.validation ?? "";
+    q("cfgSeed").value = t.seed ?? "";
+    const names = ["log1p_requestsPerMinute","errorRate","log1p_p95LatMs","log1p_p99LatMs","log1p_p95TokPerSec","log1p_p99TokPerSec","cpuFrac","memFrac","tempC","diskFrac"];
+    const filter = (cfg.featureFilter || names.map(() => true));
+    const vals = (meta.inputFeatures || []).reduce((o, f) => { o[f.name] = f.value; return o; }, {});
+    q("cfgFeats").innerHTML = names.map((n, i) => {
+      const v = vals[n]; const vStr = v != null ? (typeof v === "number" ? v.toFixed(2) : v) : "—";
+      return '<label><input type="checkbox" data-fi="' + i + '" ' + (filter[i] !== false ? "checked" : "") + '>' +
+        '<span>' + n.replace(/log1p_/g, "").replace(/([A-Z])/g, " $1") + '</span>' +
+        '<span class="fv">' + vStr + '</span></label>';
+    }).join("");
+    cfgFormDirty = false;
+  }
+  function buildCfgPatch() {
+    const patch = { featureFilter: [] };
+    patch.ingestEnabled = q("cfgIngest").checked;
+    patch.ewmaDecay = parseFloat(q("cfgDecay").value) || undefined;
+    patch.contextWindows = parseInt(q("cfgCtx").value) || undefined;
+    patch.pcaComponents = parseInt(q("cfgPca").value) || undefined;
+    patch.watchZ = parseFloat(q("cfgWatch").value) || undefined;
+    patch.highZ = parseFloat(q("cfgHigh").value) || undefined;
+    patch.cron = q("cfgCron").value.trim() || null;
+    patch.train = {};
+    patch.train.minRows = parseInt(q("cfgMin").value) || undefined;
+    patch.train.epochs = parseInt(q("cfgEpochs").value) || undefined;
+    patch.train.batch = parseInt(q("cfgBatch").value) || undefined;
+    patch.train.trials = parseInt(q("cfgTrials").value) || undefined;
+    patch.train.validation = parseFloat(q("cfgVal").value) || undefined;
+    patch.train.seed = parseInt(q("cfgSeed").value) || undefined;
+    const checks = q("cfgFeats").querySelectorAll("input[type=checkbox]");
+    checks.forEach((c) => { patch.featureFilter[parseInt(c.dataset.fi)] = c.checked; });
+    // drop undefined / empty train keys
+    patch.train = Object.fromEntries(Object.entries(patch.train).filter(([, v]) => v !== undefined));
+    if (!Object.keys(patch.train).length) delete patch.train;
+    Object.keys(patch).forEach((k) => { if (patch[k] === undefined) delete patch[k]; });
+    return patch;
+  }
+  async function saveCfg() {
+    const hdrs = headers();
+    if (!hdrs) { setModelAction("Enter admin key", "err"); return; }
+    q("btnSaveCfg").disabled = true;
+    setModelAction("saving config…", "warn");
+    try {
+      const patch = buildCfgPatch();
+      const r = await fetch("/api/analytics/config", { method: "PUT", headers: { ...hdrs, "content-type": "application/json" }, body: JSON.stringify(patch) });
+      const body = await r.json();
+      if (r.ok) {
+        anCfg = body; renderAnalytics(); cfgFormDirty = false;
+        setModelAction("config saved — next run " + (body.nextRun ? new Date(body.nextRun).toLocaleString() : "—"), "ok");
+        setTimeout(clearModelAction, 3500);
+      } else setModelAction("save failed " + r.status + ": " + (body.detail || body.error || JSON.stringify(body)), "err");
+    } catch (e) { setModelAction("save failed: " + e.message, "err"); }
+    finally { q("btnSaveCfg").disabled = false; refresh(); }
+  }
   const syncResults = {};
+  let whSql = null, whRedis = null, whRawKind = "windows";
+  async function loadWarehouse() {
+    const hdrs = headers();
+    if (!hdrs) return;
+    try {
+      const [s, r] = await Promise.all([
+        fetch("/api/analytics/warehouse/sql", { headers: hdrs }).then((x) => (x.ok ? x.json() : null)),
+        fetch("/api/analytics/warehouse/redis", { headers: hdrs }).then((x) => (x.ok ? x.json() : null)),
+      ]);
+      whSql = s; whRedis = r;
+      renderWarehouseConn();
+      renderPipelines();
+    } catch {}
+  }
+  function renderWarehouseConn() {
+    if (!whSql && !whRedis) { chip("whStatus", "unreachable"); return; }
+    if (whSql) {
+      $s("whSqlLine", (whSql.tables || []).map((t) => t.table + " ×" + t.rows).join("  ") + " · " + fmtBytes(whSql.sizeBytes) + " · " + whSql.path);
+    }
+    if (whRedis) {
+      $s("whRedisLine", whRedis.available
+        ? (whRedis.keys || []).map((k) => k.key + ":" + k.type + ":" + (k.ttl != null ? k.ttl + "s" : "-")).join("  ") + " · " + fmtBytes(whRedis.memoryBytes) + (whRedis.persistence ? " · aof" : "")
+        : "redis not available");
+    }
+    chip("whStatus", whSql && whRedis && whRedis.available ? "online" : "degraded");
+  }
+  function fmtCell(v) {
+    if (v == null) return '<span class="muted">NULL</span>';
+    const s = String(v);
+    const esc = escapeHtml(s);
+    return (esc.length > 140 ? '<span class="mono" style="font-size:11px">' + esc.slice(0, 140) + "…</span>"
+      : '<span class="mono" style="font-size:11px">' + esc + "</span>");
+  }
+  function renderResultTable(res, wrapId) {
+    const wrap = q(wrapId);
+    if (!res) { wrap.innerHTML = '<div class="muted">no result</div>'; return; }
+    const cols = res.columns || [];
+    if (!cols.length) { wrap.innerHTML = '<div class="muted">executed (' + res.rowCount + ")</div>"; return; }
+    const head = cols.map((c) => "<th>" + escapeHtml(c) + "</th>").join("");
+    const body = (res.rows || []).map((r) => "<tr>" + cols.map((_, j) => "<td>" + fmtCell(r[j]) + "</td>").join("") + "</tr>").join("");
+    wrap.innerHTML = '<table class="doc"><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table>" +
+      '<div class="muted" style="margin-top:4px">' + res.rowCount + " row" + (res.rowCount === 1 ? "" : "s") +
+      (res.truncated ? " (truncated to 200)" : "") + "</div>";
+  }
+  async function runSql(sql) {
+    const hdrs = headers();
+    if (!hdrs) { $s("sqlStatus", "enter admin key first"); return; }
+    q("btnSqlRun").disabled = true;
+    $s("sqlStatus", "running…");
+    try {
+      const r = await fetch("/api/analytics/warehouse/query", {
+        method: "POST", headers: { ...hdrs, "content-type": "application/json" }, body: JSON.stringify({ sql }),
+      });
+      const body = await r.json();
+      if (r.ok) { $s("sqlStatus", "ok · " + body.rowCount + " rows in " + (body.ms ?? "—") + "ms"); renderResultTable(body, "sqlOut"); }
+      else $s("sqlStatus", "error: " + (body.detail || body.error || JSON.stringify(body)));
+    } catch (e) { $s("sqlStatus", "failed: " + e.message); }
+    finally { q("btnSqlRun").disabled = false; }
+  }
+  async function loadRaw(kind, limit) {
+    const hdrs = headers();
+    if (!hdrs) return;
+    q("btnWhWindows").disabled = true; q("btnWhRequests").disabled = true;
+    whRawKind = kind;
+    try {
+      const l = limit || parseInt(q("whRawLimit").value) || 25;
+      const r = await fetch("/api/analytics/warehouse/raw/" + kind + "?limit=" + l, { headers: hdrs });
+      const body = await r.json();
+      if (!r.ok) { $s("whRawStatus", "error: " + (body.detail || JSON.stringify(body))); return; }
+      chip("whRawKind", kind);
+      const cols = kind === "windows"
+        ? ["id", "windowStart", "features[10]", "risk", "t2", "pValue", "computeMs", "createdAt"]
+        : ["id", "startedAt", "features[6]", "error"];
+      const rows = (body || []).map((rec) => kind === "windows"
+        ? [String(rec.id), new Date(rec.windowStart).toLocaleString(), rec.features ? "[" + rec.features.join(", ") + "]" : null,
+           rec.risk, rec.t2 != null ? rec.t2.toFixed(3) : null, rec.pValue != null ? rec.pValue.toFixed(4) : null,
+           rec.computeMs != null ? rec.computeMs.toFixed(1) + "ms" : null, new Date(rec.createdAt).toLocaleTimeString()]
+        : [String(rec.id), new Date(rec.startedAt).toLocaleString(), rec.features ? "[" + rec.features.join(", ") + "]" : null,
+           rec.error ? "error" : "ok"]);
+      renderResultTable({ columns: cols, rows, rowCount: rows.length, truncated: false }, "whRawOut");
+      $s("whRawStatus", (rows.length || 0) + " raw rows");
+    } catch (e) { $s("whRawStatus", "failed: " + e.message); }
+    finally { q("btnWhWindows").disabled = false; q("btnWhRequests").disabled = false; }
+  }
+  document.querySelectorAll("#wh-sql-console .filter-bar button").forEach((b) => {
+    b.addEventListener("click", () => { q("sqlInput").value = b.dataset.sql.replace(/;$/, "") + ";"; runSql(q("sqlInput").value); });
+  });
+  q("btnSqlRun").addEventListener("click", () => runSql(q("sqlInput").value));
+  q("btnWhRefresh").addEventListener("click", () => loadWarehouse());
+  q("btnWhRaw").addEventListener("click", () => loadRaw(whRawKind, 25));
+  q("btnWhWindows").addEventListener("click", () => loadRaw("windows"));
+  q("btnWhRequests").addEventListener("click", () => loadRaw("requests"));
+  q("whRawLimit").addEventListener("change", () => loadRaw(whRawKind));
   function runCheck(c, hdrs, ikey) {
     const t0 = performance.now();
     return Promise.resolve()
@@ -1025,6 +1485,17 @@
         const b = await r.json().catch(() => ({}));
         const ids = (b.data || []).map((m) => m.id).join(", ");
         return { ok: r.ok, note: ids ? "serving " + ids : "http " + r.status };
+      } },
+    { id: "whsql", name: "warehouse sqlite", kind: "connection", needKey: true, run: async (hdrs) => {
+        const r = await fetch("/api/analytics/warehouse/sql", { headers: hdrs });
+        const b = await r.json();
+        if (!r.ok) return { ok: false, note: "http " + r.status, data: null };
+        return { ok: true, note: (b.tables || []).length + " tables · " + (b.windows ?? 0) + " windows", data: b };
+      } },
+    { id: "whredis", name: "warehouse redis", kind: "connection", needKey: true, run: async (hdrs) => {
+        const r = await fetch("/api/analytics/warehouse/redis", { headers: hdrs });
+        const b = await r.json();
+        return { ok: r.ok && b.available !== false, note: b.available ? (b.keys || []).length + " keys" : "not available", data: b };
       } },
     { id: "p_inf", name: "llama inference", kind: "pipeline", needKey: true, run: async (hdrs) => {
         const s = await (await fetch("/api/status", { headers: hdrs })).json();
@@ -1111,6 +1582,8 @@
     logs: ["cLg", "cLgLat", "cLgSync"],
     reqs: ["cRq", "cRqLat", "cRqSync"],
     oc: ["cOc", "cOcLat", "cOcSync"],
+    whsql: ["cWhSql", "cWhSqlLat", "cWhSqlSync"],
+    whredis: ["cWhRedis", "cWhRedisLat", "cWhRedisSync"],
   };
   function renderConnections() {
     const meta = modelMeta || {};
@@ -1134,6 +1607,18 @@
       }
       q(idx[1]).textContent = r.ms != null ? r.ms + " ms" : "—";
       q(idx[2]).textContent = new Date(r.when).toLocaleTimeString();
+    }
+    const wsql = syncResults.whsql?.data;
+    if (wsql) {
+      $s("cWhSqlPath", wsql.path ?? "—");
+      $s("cWhSqlTables", (wsql.tables || []).map((t) => t.table + " ×" + t.rows).join("  ") || "—");
+      $s("cWhSqlCount", (wsql.windows ?? 0) + " / " + (wsql.requests ?? 0));
+    }
+    const wred = syncResults.whredis?.data;
+    if (wred && wred.available) {
+      $s("cWhRedisKeys", (wred.keys || []).map((k) => k.key + "(" + k.type + (k.ttl != null ? "," + k.ttl + "s" : "") + ")").join("  ") || "no keys");
+      $s("cWhRedisMem", wred.memoryBytes != null ? fmtBytes(wred.memoryBytes) : "—");
+      chip("cWhRedisAof", wred.persistence ? "on" : "off");
     }
   }
 
@@ -1174,9 +1659,17 @@
     $s("pStEps", eps != null ? eps.toFixed(2) : "—");
     $s("pStBytes", ps.bytes ? fmtBytes(ps.bytes) : "—");
     $s("pStLast", ps.last ? new Date(ps.last).toLocaleTimeString() : "—");
+    const wsql = syncResults.whsql?.data;
+    const wred = syncResults.whredis?.data;
+    if (wsql) {
+      chip("pWhStatus", wsql && wred && wsql.windows != null ? "online" : "degraded");
+      $s("pWhSql", (wsql.tables || []).map((t) => t.table + " ×" + t.rows).join("  ") || "—");
+      $s("pWhRaw", (wsql.windows ?? 0) + " windows · " + (wsql.requests ?? 0) + " requests" + (wsql.latestWindowStart ? " · latest " + new Date(wsql.latestWindowStart).toLocaleTimeString() : ""));
+    }
+    $s("pWhRedis", wred != null ? (wred.available ? (wred.keys || []).length + " keys · " + (wred.memoryBytes != null ? fmtBytes(wred.memoryBytes) : "?") + (wred.persistence ? " · aof" : " · no-aof") : "n/a") : "—");
   }
   function wirePipeNotes() {
-    ["inference", "update", "streams"].forEach((id) => {
+    ["inference", "update", "streams", "warehouse"].forEach((id) => {
       const el = q("pnote-" + id);
       el.value = localStorage.getItem("pipenote-" + id) || "";
       el.addEventListener("input", () => localStorage.setItem("pipenote-" + id, el.value));
@@ -1674,6 +2167,39 @@
         }
       }
       if (obj.type === "system.metrics") { renderSystem(obj); renderStatusbar({ gateway: q("sbGw")?.dataset?.gw || "online", llama: q("sbLl")?.textContent || "offline", model: q("sbModel")?.textContent, ...obj }); }
+      if (obj.type === "analytics.risk") {
+        anRisk = { ...obj };
+        if (obj.nnRisk && anMeta && anMeta.latency) { anMeta.latency.lastNnMs = obj.nnLatencyMs ?? anMeta.latency.lastNnMs; }
+        if (anCfg) renderAnalytics();
+      }
+      if (obj.type === "analytics.infer") {
+        chip("anNnChip", "tf-lite " + (obj.nnRisk || "—"));
+        if (anMeta && anMeta.latency) { anMeta.latency.lastNnMs = obj.nnLatencyMs ?? anMeta.latency.lastNnMs; anMeta.latency.nnRuns = (anMeta.latency.nnRuns || 0) + 1; }
+        renderAnalytics();
+      }
+      if (obj.type === "analytics.meta") {
+        anMeta = obj;
+        if (anCfg) renderAnalytics();
+      }
+      if (obj.type === "training.progress") {
+        const m = obj.metrics || {};
+        if (obj.config) {
+          anTrialHtml += "trial " + (obj.trial ?? "?") + "/" + (obj.trials ?? "?") +
+            " F1 " + (m.f1 != null ? m.f1.toFixed(3) : "—") +
+            " acc " + (m.accuracy != null ? m.accuracy.toFixed(3) : "—") +
+            (obj.config.layers ? " layers" + obj.config.layers + " units" + obj.config.units + " lr" + obj.config.lr : " lr" + obj.config.lr) +
+            " batch" + obj.config.batch + "\n";
+          if (anTrialHtml.split("\n").length > 6) anTrialHtml = anTrialHtml.split("\n").slice(-6).join("\n");
+          $s("anTrials", anTrialHtml.trim());
+        }
+        if (obj.bestSoFar) { anBestData = obj.bestSoFar; if (anCfg) renderAnalytics(); }
+      }
+      if (obj.type === "training.done") {
+        if (obj.best) anBestData = obj.best;
+        loadAnalytics();
+      }
+      if (obj.type === "training.started") { anTrialHtml = ""; $s("anTrials", ""); }
+      if (obj.type && obj.type.startsWith("training.") && obj.type !== "training.progress") loadAnalytics();
       handleRequestEvent(obj);
     };
     ws.onerror = () => { dot.className = "dot err"; };
@@ -1701,6 +2227,7 @@
   setInterval(refresh, 5000);
   refresh();
   loadLogHistory();
+  loadRaw("windows", 25);
   if (keyInput.value) connectWs(keyInput.value);
 </script>
 </body>

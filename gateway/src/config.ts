@@ -46,6 +46,9 @@ const envSchema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   AUTO_UPDATE_INTERVAL: z.string().default("24h"),
+  ANALYTICS_URL: optionalUrl,
+  INGEST_SECRET: optionalString,
+  ANALYTICS_FEATURE_WINDOW_SEC: z.coerce.number().int().positive().default(60),
 });
 
 export const MODELS_CONTAINER_DIR = "/models";
@@ -75,6 +78,11 @@ export interface Config {
     containerPath: string;
   };
   autoUpdate: { enabled: boolean; interval: string };
+  analytics: {
+    url?: string;
+    ingestSecret?: string;
+    windowSec: number;
+  };
 }
 
 export function parseConfig(env: Record<string, string | undefined>): Config {
@@ -104,6 +112,11 @@ export function parseConfig(env: Record<string, string | undefined>): Config {
       containerPath: `${MODELS_CONTAINER_DIR}/${parsed.MODEL_FILE}`,
     },
     autoUpdate: { enabled: parsed.AUTO_UPDATE_MODEL, interval: parsed.AUTO_UPDATE_INTERVAL },
+    analytics: {
+      url: parsed.ANALYTICS_URL,
+      ingestSecret: parsed.INGEST_SECRET,
+      windowSec: parsed.ANALYTICS_FEATURE_WINDOW_SEC,
+    },
   };
 }
 

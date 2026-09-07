@@ -55,4 +55,20 @@ describe("config", () => {
     expect(parseConfig(env()).autoUpdate.enabled).toBe(false);
     expect(parseConfig(env({ AUTO_UPDATE_MODEL: "true" })).autoUpdate.enabled).toBe(true);
   });
+
+  it("parses analytics defaults and overrides", () => {
+    const cfg = parseConfig(env());
+    expect(cfg.analytics.url).toBeUndefined();
+    expect(cfg.analytics.ingestSecret).toBeUndefined();
+    expect(cfg.analytics.windowSec).toBe(60);
+
+    const full = parseConfig(env({
+      ANALYTICS_URL: "http://analytics:8081",
+      INGEST_SECRET: "secret",
+      ANALYTICS_FEATURE_WINDOW_SEC: "120",
+    }));
+    expect(full.analytics.url).toBe("http://analytics:8081");
+    expect(full.analytics.ingestSecret).toBe("secret");
+    expect(full.analytics.windowSec).toBe(120);
+  });
 });

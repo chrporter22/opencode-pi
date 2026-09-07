@@ -24,6 +24,12 @@ export function extractKey(req: Request): string | undefined {
     const match = /^Bearer\s+(.+)$/i.exec(auth);
     if (match && match[1].length > 0) return match[1];
   }
+
+  const query = (req as { query?: unknown }).query as
+    | Record<string, unknown>
+    | undefined;
+  const qKey = query?.key;
+  if (typeof qKey === "string" && qKey.length > 0) return qKey;
   return undefined;
 }
 
