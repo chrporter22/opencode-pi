@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import httpProxy from "http-proxy";
 import type { ServerResponse as HttpServerResponse } from "node:http";
@@ -16,6 +16,25 @@ export interface V1Deps {
 
 interface RequestMeta {
   id: string;
+  source: string;
+  ip: string;
+}
+
+function requestSource(req: Request): string {
+  const h = req.headers["x-opencode-pi-source"];
+  if (typeof h === "string" && h.trim()) return h.trim().slice(0, 32);
+  if (req.headers.origin) return "playground";
+  const ua = String(req.headers["user-agent"] || "").toLowerCase();
+  if (!ua) return "unknown";
+  if (ua.startsWith("curl")) return "curl";
+  if (ua.includes("mozilla")) return "browser";
+  return "opencode";
+}
+
+function requestIp(req: Request): string {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.trim()) return fwd.split(",")[0].trim();
+  return req.socket.remoteAddress ?? req.ip ?? "?";
 }
 
 function sniffUsage(tail: string, acc: RequestUsage): void {
@@ -51,7 +70,9 @@ export function v1Router(deps: V1Deps): Router {
   router.use((req, res, next) => {
     const state = deps.state.snapshot();
     const track = req.path === "/chat/completions";
-    const meta: RequestMeta | undefined = track ? { id: randomUUID() } : undefined;
+    const meta: RequestMeta | undefined = track
+      ? { id: randomUUID(), source: requestSource(req), ip: requestIp(req) }
+      : undefined;
     if (meta) (req as { v1Meta?: RequestMeta }).v1Meta = meta;
     if (state.llama !== "ready") {
       if (meta) {
@@ -60,6 +81,8 @@ export function v1Router(deps: V1Deps): Router {
           method: req.method,
           path: req.path,
           model: deps.config.model.name,
+          source: meta.source,
+          ip: meta.ip,
         });
         deps.requests.fail(meta.id, "inference not ready");
       }
@@ -75,6 +98,8 @@ export function v1Router(deps: V1Deps): Router {
         method: req.method,
         path: req.path,
         model: deps.config.model.name,
+        source: meta.source,
+        ip: meta.ip,
       });
     }
     next();

@@ -68,4 +68,24 @@ describe("v1 proxy", () => {
     expect(seenPath).toBe("/chat/completions");
     expect(seenAuth).toBeUndefined();
   });
+
+  it("records request source and client ip", async () => {
+    const state = new RuntimeState();
+    state.setLlama("ready");
+    state.setModelLoaded(true);
+    const requests = createRequestTracker();
+    const app = express();
+    app.use("/v1", v1Router({ config: makeConfig({ llama: { ...makeConfig().llama, url: upstreamUrl } }), state, logger: createLogger({ stdout: false }), requests }));
+
+    await request(app)
+      .post("/v1/chat/completions")
+      .set("x-opencode-pi-source", "playground")
+      .set("x-forwarded-for", "192.168.1.42")
+      .send({ model: "Qwen3-1.7B", messages: [{ role: "user", content: "hi" }] });
+
+    const rec = requests.snapshot()[0];
+    expect(rec.status).toBe("completed");
+    expect(rec.source).toBe("playground");
+    expect(rec.ip).toBe("192.168.1.42");
+  });
 });

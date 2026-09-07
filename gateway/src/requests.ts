@@ -5,6 +5,8 @@ export interface RequestRecord {
   method: string;
   path: string;
   model: string;
+  source: string | null;
+  ip: string | null;
   status: RequestStatus;
   startedAt: number;
   durationMs: number | null;
@@ -20,6 +22,8 @@ export interface RequestContext {
   method: string;
   path: string;
   model: string;
+  source?: string | null;
+  ip?: string | null;
 }
 
 export interface RequestUsage {
@@ -98,6 +102,8 @@ export function createRequestTracker(opts: RequestTrackerOptions = {}): RequestT
         method: ctx.method,
         path: ctx.path,
         model: ctx.model,
+        source: ctx.source ?? null,
+        ip: ctx.ip ?? null,
         status: "started",
         startedAt: Date.now(),
         durationMs: null,

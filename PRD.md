@@ -856,6 +856,36 @@ image or `/opt/llama` changes. It reuses the standard atomic update mechanism
 (§10.4): replacement only happens after a verified download, and a failed swap
 leaves `current.gguf` untouched.
 
+There are two equivalent paths — the host scripts (§10.7a below) and the gateway
+API (steps 1–7). Both download → SHA-256 verify → atomic rename into
+`current.gguf`; the prior model is preserved as `$MODEL_DIR/.previous.gguf` for
+rollback.
+
+### 10.7a Host-script swap (install/update) — recommended
+
+`scripts/install.sh` (and `scripts/update.sh`) now provision the model, not just
+llama-server:
+
+```bash
+sudo ./scripts/install.sh          # installs llama + Q4_K_M model, points .env at it
+sudo ./scripts/install.sh --clean-old   # also delete the preserved previous (Q8_0)
+```
+
+- Downloads `Qwen_Qwen3-1.7B-Q4_K_M.gguf` if the target is not already in place,
+  verifies SHA-256, atomically swaps it into `$MODEL_DIR/current.gguf`, and rewrites
+  `MODEL_URL` / `MODEL_SHA256` / `MODEL_QUANT` in `<repo>/.env` to the 4-bit values.
+- **Old-model cleanup:** the pre-swap model is preserved as
+  `$MODEL_DIR/.previous.gguf`. Remove it deliberately with `--clean-old`, or later
+  with `sudo ./scripts/cleanup.sh --previous-model`. The name was chosen so cleanup
+  can never touch the live `current.gguf`.
+- After the script, `docker compose up -d` (recreate) loads the new env; the gateway
+  finds the model already present and skips download.
+
+### 10.7b Gateway API swap
+
+The steps below remain the no-script alternative. The old `current.gguf` is
+replaced (not kept) in this path.
+
 1. **Back up the current model values.** Save the running `MODEL_URL`,
    `MODEL_SHA256`, and `MODEL_QUANT` from `.env` for rollback (the old
    `current.gguf` is replaced, not kept).
@@ -903,15 +933,18 @@ leaves `current.gguf` untouched.
 
 7. **Rollback.** Restore the saved `MODEL_URL`/`MODEL_SHA256`/`MODEL_QUANT` (Q8_0) in
    `.env`, run `docker compose up -d`, then trigger `POST /api/model/update` again —
-   Q8_0 is re-downloaded, verified, and reinstalled the same way.
+   Q8_0 is re-downloaded, verified, and reinstalled the same way. If the swap was
+   done via the host scripts, the preserved `$MODEL_DIR/.previous.gguf` (Q8_0) can be
+   copied back directly instead of re-downloading.
 
 Notes:
 
 - There is no public "Qwen3.5-1.7B" artifact; the intended target is the Qwen3-1.7B
   weights in 4-bit, served by the mirror above.
-- No host script is involved: `scripts/update-model.sh` (referenced in §10.4) does
-  not exist in the repo yet — the canonical path is the gateway API above, same as
-  `scripts/ensure-model.sh` vs. the in-container `ensure-model.action`.
+- The existing host scripts referenced in §10.4 (`scripts/ensure-model.sh` /
+  `scripts/update-model.sh`) still do not exist; the canonical paths are the gateway
+  API above and the model provisioning now built into `scripts/install.sh` /
+  `scripts/update.sh`.
 
 ## 11. Environment Configuration
 
@@ -926,7 +959,7 @@ Configuration is controlled through environment variables (`.env`, loaded by Doc
 | `LLAMA_HOST`            | `llama-server` bind address                   | `127.0.0.1`                 |
 | `LLAMA_PORT`            | `llama-server` port                           | `8000`                      |
 | `LLAMA_BIN`             | Path to `llama-server` inside the container   | `/opt/llama/llama-server`   |
-| `LLAMA_CONTEXT_SIZE`    | Context window                                | `8192`                      |
+| `LLAMA_CONTEXT_SIZE`    | Context window (Qwen3-1.7B max 32768)        | `8192`                      |
 | `LLAMA_THREADS`         | CPU threads (empty = llama decides)           | (unset)                     |
 | `LLAMA_BATCH_SIZE`      | Prompt batch size                             | (unset)                     |
 | `LLAMA_PARALLEL`        | Parallel sequences                            | (unset)                     |
@@ -1281,14 +1314,14 @@ Note: the original spec listed the *web control center, model dashboard, CPU/RAM
 
 Resolved at build time:
 
-- **Model:** Qwen3-1.7B, Q8_0 (`Qwen/Qwen3-1.7B-GGUF`, Apache-2.0, 1.83 GB).
-- **Repository/source URL:** `https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf` (public, no auth required).
-- **Checksum:** SHA-256 `061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a` published by HuggingFace LFS.
-- **Swap target (4-bit, optional, planned):** Qwen3-1.7B `Q4_K_M` via the
-  `bartowski/Qwen_Qwen3-1.7B-GGUF` imatrix mirror (~1.28 GB — URL, SHA-256, and the
-  step-by-step in §10.7). Default remains Q8_0 until the swap is executed. There is no
-  public "Qwen3.5-1.7B" artifact; "3.5-1.7b in 4 bit" resolved as Qwen3-1.7B in Q4_K_M.
-- **Expected context length:** `8192` (default).
+- **Model:** Qwen3-1.7B, `Q4_K_M` imatrix (4-bit) from the `bartowski/Qwen_Qwen3-1.7B-GGUF`
+  community mirror (~1.28 GB, Apache-2.0). Qwen's official `Qwen/Qwen3-1.7B-GGUF` repo
+  publishes only `Q8_0` — it does not ship 4-bit quants, so the 4-bit build comes from
+  bartowski (the prior Q8_0 official artifact, 1.83 GB, remains the `.previous.gguf`
+  rollback copy).
+- **Repository/source URL:** `https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf` (public, no auth required).
+- **Checksum:** SHA-256 `72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb` published by HuggingFace LFS (verified via the HF API on 2026-09-07).
+- **Expected context length:** `8192` (below Qwen3-1.7B's 32768 max, chosen for fast prompt-eval on the Pi's 4 cores; `LLAMA_CONTEXT_SIZE` default).
 - **Target tokens/sec:** ~8–10 on Pi 5 (measured ~8.7 at 4 threads on Cortex-A76-class); `LLAMA_THREADS=4`.
 - **Pi 5 RAM:** 16 GB.
 - **LAN key policy:** keys required by default; inference `/v1/*` + admin `/api/*` + `/ws`. No no-key mode.

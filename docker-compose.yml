@@ -13,6 +13,8 @@ services:
       - /app/node_modules
       - /opt/llama:/opt/llama:ro
       - /opt/qwen-model:/models
+      - /etc/os-release:/host-os-release:ro
+      - /proc/mounts:/host-mounts:ro
     restart: unless-stopped
 
   gateway-test:

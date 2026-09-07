@@ -16,7 +16,7 @@
     --viridis-0: #440154; --viridis-1: #3b528b; --viridis-2: #21918c;
     --viridis-3: #5ec962; --viridis-4: #fde725;
     --ac-conn: #4fd3c7; --ac-sys: #ff7b54; --ac-model: #b07ae2; --ac-host: #64d88b;
-    --ac-pg: #5cb8f6; --ac-stream: #fde725; --ac-evt: #ff9d5c;
+    --ac-pg: #5cb8f6; --ac-stream: #fde725; --ac-evt: #ff9d5c; --ac-wh: #8ab4f8;
     --glow: rgba(86,156,214,.35); --bar: #171717; --sidebar: #17171a;
     --mono: "JetBrainsMono Nerd Font", "JetBrains Mono", "SF Mono", Monaco, Consolas, monospace;
   }
@@ -64,17 +64,25 @@
   .side-nav { display: flex; flex-direction: column; gap: 2px; }
   .side-nav a {
     display: flex; align-items: center; gap: 10px; text-decoration: none;
-    color: var(--dim); font-size: 13px; padding: 7px 10px; border-radius: 6px;
+    color: var(--faint); font-size: 13px; padding: 7px 10px; border-radius: 4px;
     border-left: 3px solid transparent; transition: background .15s, color .15s, border-color .15s;
   }
-  .side-nav a .marker { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
-  .side-nav a:hover { background: rgba(255,255,255,.04); color: var(--fg); }
+  .side-nav a .marker { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; filter: saturate(.35); transition: filter .15s; }
+  .side-nav a:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: color-mix(in srgb, var(--accent) 60%, var(--dim)); }
+  .side-nav a:hover .marker { filter: saturate(.7); }
   .side-nav a.active {
-    background: rgba(255,255,255,.05); color: var(--fg); border-left-color: var(--accent);
-    box-shadow: 0 0 12px -2px var(--glow);
+    background: color-mix(in srgb, var(--accent) 20%, transparent); color: color-mix(in srgb, var(--accent) 80%, #fff);
+    border-left-color: var(--accent); box-shadow: 0 0 12px -2px var(--glow);
+  }
+  .side-nav a.active .marker { filter: saturate(1); }
+  .side-nav .nav-sep {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--faint); padding: 12px 10px 4px;
   }
   .nav-label { flex: 1; }
   .content { flex: 1; margin-left: 220px; min-width: 0; padding: 20px 24px 8px; }
+  .view { display: block; }
+  .view.hide { display: none; }
   .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
   .topbar h1 { font-size: 18px; font-weight: 600; }
   .topbar h1 .sub {
@@ -85,13 +93,14 @@
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); display: inline-block; }
   .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
   .dot.err { background: var(--err); box-shadow: 0 0 8px var(--err); }
+  .dot.warn { background: var(--viridis-4); box-shadow: 0 0 8px var(--viridis-4); }
   .dot.ok.pulse { animation: pulse 2s infinite; }
   @keyframes pulse {
     0%, 100% { box-shadow: 0 0 2px var(--ok); }
     50% { box-shadow: 0 0 12px var(--ok); }
   }
   .card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 4px;
     padding: 16px 16px 14px; min-width: 0; border-top: 3px solid var(--border);
     scroll-margin-top: 12px; transition: box-shadow .18s, transform .18s;
   }
@@ -103,13 +112,19 @@
   .card.ac-pg { border-top-color: var(--ac-pg); } .card.ac-pg h2 { color: var(--ac-pg); }
   .card.ac-stream { border-top-color: var(--ac-stream); } .card.ac-stream h2 { color: var(--ac-stream); }
   .card.ac-evt { border-top-color: var(--ac-evt); } .card.ac-evt h2 { color: var(--ac-evt); }
+  .card.ac-wh { border-top-color: var(--ac-wh); } .card.ac-wh h2 { color: var(--ac-wh); }
+  .card.span2 { grid-column: span 2; }
+  .card.full { grid-column: 1 / -1; }
+  #dash-sync { order: 0; }
+  #dash-sys { order: 1; }
+  #pipe-streams { order: 2; }
+  #dash-model { order: 3; }
+  #dash-stream-card { order: 4; }
   .dashboard { display: grid; gap: 16px; grid-template-columns: 1fr; }
   @media (min-width: 1024px) {
     .dashboard { grid-template-columns: repeat(3, 1fr); }
-    .card.playground-card { grid-column: span 2; }
-    .card.streams-card { grid-column: 1 / -1; }
-    .card.events-card { grid-column: 1 / -1; }
   }
+  @media (min-width: 1024px) { .content { max-width: 1280px; } }
   .table-scroll { overflow-x: auto; }
   table.stats { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
   table.stats td { padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -130,18 +145,17 @@
   .statusbar .chip { font-size: 11px; }
   .statusbar button {
     background: transparent; color: var(--dim); border: 1px solid var(--border);
-    border-radius: 6px; padding: 4px 10px; font-size: 12px; margin: 0;
+    border-radius: 3px; padding: 4px 10px; font-size: 12px; margin: 0;
   }
   @media (max-width: 900px) {
     .sidebar { width: 54px; padding: 14px 8px; }
     .sidebar .brand { padding: 0 0 12px; justify-content: center; }
-    .sidebar .brand .brand-txt, .side-nav .nav-label { display: none; }
+    .sidebar .brand .brand-txt, .side-nav .nav-label, .side-nav .nav-sep { display: none; }
     .side-nav a { justify-content: center; padding: 7px 0; }
     .content { margin-left: 54px; padding: 16px 14px 4px; }
     .statusbar { font-size: 11px; gap: 10px; padding: 6px 12px; }
     .statusbar .hide-sm { display: none; }
   }
-  @media (min-width: 1024px) { .content { max-width: 1280px; } }
   .row {
     display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline;
     justify-content: space-between; padding: 4px 0; min-width: 0;
@@ -154,24 +168,67 @@
     border-radius: 6px; padding: 8px 10px; font-size: 13px; width: 100%; margin-bottom: 8px;
   }
   button {
-    background: var(--accent); color: #1e1e1e; border: none; border-radius: 6px;
+    background: var(--accent); color: #1e1e1e; border: none; border-radius: 3px;
     padding: 8px 14px; font-size: 13px; cursor: pointer; margin-right: 8px; white-space: nowrap;
   }
   button:disabled { opacity: .5; cursor: default; }
   .chip {
-    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    display: inline-block; padding: 1px 8px; border-radius: 3px;
     background: var(--chip-bg); font-size: 12px; white-space: nowrap;
   }
   .chip.ok { color: var(--ok); }
   .chip.err { color: var(--err); }
   .chip.warn { color: var(--viridis-4); }
   .chip.clk { cursor: pointer; text-decoration: underline dotted; }
+  .chip.pending { color: var(--faint); }
   .progress { height: 8px; background: var(--input); border-radius: 4px; margin: 10px 0; overflow: hidden; }
+  .action-line {
+    font-size: 13px; padding: 6px 10px; border-radius: 6px; margin: 8px 0;
+    background: var(--input); color: var(--dim); white-space: pre-wrap; word-break: break-word;
+  }
+  .action-line.ok { color: var(--ok); }
+  .action-line.err { color: var(--err); }
+  .action-line .spinner::after {
+    content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px;
+    border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+    vertical-align: -1px; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .progress > div { height: 100%; background: var(--progress-inner); width: 0; transition: width .3s; }
   pre {
     font-family: var(--mono); font-size: 12px; color: var(--dim);
     white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
   }
+  .neofetch {
+    margin-top: 12px;
+    background: linear-gradient(180deg, #0b0f14, #11161d);
+    border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px 8px;
+    font-family: var(--mono);
+  }
+  .neo-wrap { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; }
+  .neo-panel { display: flex; gap: 12px; align-items: flex-start; min-width: 0; flex: 0 1 auto; }
+  .neo-ascii {
+    font-family: var(--mono); font-size: 9.5px; line-height: 1.1; margin: 0;
+    white-space: pre; color: var(--faint); user-select: none;
+  }
+  .neo-ascii.neo-arch { color: #1793d1; }
+  .neo-ascii.neo-deb { color: #b0301a; }
+  #view-metrics .neo-wrap { flex-wrap: nowrap; align-items: stretch; }
+  #view-metrics .neo-panel { flex: 1 1 0; }
+  #view-metrics .neo-info { flex: 1 1 0; max-width: 280px; }
+  @media (max-width: 1099px) {
+    #view-metrics .neo-wrap { flex-wrap: wrap; }
+  }
+  @media (max-width: 900px) { .neo-ascii { display: none; } }
+  .neo-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .neo-row { display: flex; gap: 8px; font-family: var(--mono); font-size: 11px; line-height: 1.35; }
+  .neo-row .neo-k { color: var(--faint); flex-shrink: 0; min-width: 70px; }
+  .neo-row .neo-v { color: var(--dim); overflow-wrap: anywhere; }
+  .neo-row .neo-v.hot { color: var(--ac-host); }
+  .neo-nvme { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 11px; color: var(--dim); }
+  .neo-nvme .nrow { padding: 1px 0; }
+  .neo-nvme b { color: var(--fg); font-weight: 600; }
+  .neo-nvme .muted { color: var(--faint); }
   table.streams { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
   table.streams th, table.streams td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.streams th { color: var(--dim); font-weight: 500; }
@@ -183,9 +240,16 @@
   .t1 { color: var(--viridis-1); } .t2 { color: var(--viridis-2); }
   .t3 { color: var(--viridis-3); } .t4 { color: var(--viridis-4); }
   .conv { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+  .msg {
+    max-width: 80%; padding: 8px 12px; border-radius: 10px;
+    white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.45;
+  }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #1e1e1e; border-bottom-right-radius: 2px; }
+  .msg.assistant { align-self: flex-start; background: var(--input); border-bottom-left-radius: 2px; }
+  .msg.hint { color: var(--faint); background: transparent; border: 1px dashed var(--border); }
   .log {
     font-family: var(--mono); font-size: 12px; line-height: 1.5;
-    max-height: 240px; overflow-y: auto; padding: 8px;
+    max-height: 420px; overflow-y: auto; padding: 8px;
     background: #1b1b1b; border: 1px solid var(--border); border-radius: 6px; color: var(--dim);
   }
   .log .evt { padding: 1px 0; word-break: break-all; }
@@ -200,13 +264,60 @@
   .log .tag.dim { color: var(--faint); }
   .log .msg { color: var(--fg); }
   table.streams .errDetail td { color: var(--err); border-bottom: none; }
-  .msg {
-    max-width: 80%; padding: 8px 12px; border-radius: 10px;
-    white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.45;
+  .sync-item {
+    display: flex; gap: 10px; align-items: baseline; padding: 5px 0;
+    border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 13px;
   }
-  .msg.user { align-self: flex-end; background: var(--accent); color: #1e1e1e; border-bottom-right-radius: 2px; }
-  .msg.assistant { align-self: flex-start; background: var(--input); border-bottom-left-radius: 2px; }
-  .msg.hint { color: var(--faint); background: transparent; border: 1px dashed var(--border); }
+  .sync-item .s-name { flex: 0 0 auto; color: var(--dim); }
+  .sync-item .s-kind { font-size: 11px; color: var(--faint); flex: 0 0 auto; }
+  .sync-item .s-note { flex: 1; color: var(--dim); text-align: right; overflow-wrap: anywhere; }
+  .sync-item .s-lat { flex: 0 0 auto; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .sync-item.ok .s-note { color: var(--ok); }
+  .sync-item.err .s-note { color: var(--err); }
+  .sync-item.warn .s-note { color: var(--viridis-4); }
+  #dash-sync { padding: 12px 14px 10px; }
+  #dash-sync h2 { margin-bottom: 8px; }
+  #dash-sync .row.actions { padding: 2px 0 6px; }
+  #dash-sync #syncMsg { margin: 0 0 4px; font-size: 12px; }
+  #dash-sync button { padding: 5px 11px; font-size: 12px; margin: 0; }
+  #syncList { margin-top: 2px; }
+  #dash-sync .sync-item { padding: 1px 0; font-size: 11.5px; }
+  .filter-bar { display: flex; gap: 6px; margin: 8px 0; }
+  .filter-bar button {
+    margin: 0; padding: 3px 12px; font-size: 12px; border-radius: 3px;
+    background: var(--chip-bg); color: var(--dim); border: 1px solid var(--border);
+  }
+  .filter-bar button.active { background: var(--accent); color: #1e1e1e; border-color: var(--accent); }
+  .usage-bar { height: 14px; background: var(--input); border-radius: 7px; overflow: hidden; margin: 6px 0 12px; }
+  .usage-bar > div { height: 100%; background: var(--progress-inner); width: 0; transition: width .3s; }
+  .spark-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .spark-item {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; border-top: 3px solid var(--border);
+  }
+  .spark-item h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--dim); margin-bottom: 4px; }
+  .spark-item .mstat { font-size: 20px; font-variant-numeric: tabular-nums; }
+  canvas.spark { width: 100%; height: 52px; display: block; margin-top: 6px; }
+  .pnote {
+    width: 100%; background: var(--input); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+    font-size: 12px; font-family: var(--mono); resize: vertical; min-height: 36px; margin-top: 8px;
+  }
+  .planned {
+    border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px;
+    color: var(--faint); font-size: 13px; margin-bottom: 8px;
+  }
+  .muted { color: var(--faint); font-size: 12px; }
+  #dashStream { max-height: 170px; }
+  table.doc { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.doc th, table.doc td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.doc th { color: var(--dim); text-transform: uppercase; letter-spacing: .6px; font-size: 11px; font-weight: 600; }
+  table.doc td.mono, table.doc td.k { font-family: var(--mono); }
+  table.doc .method { color: var(--accent); font-family: var(--mono); font-weight: 600; }
+  .prose { font-size: 13px; color: var(--fg); line-height: 1.55; }
+  .prose .k { color: var(--dim); }
+  .prose ul { margin: 8px 0 0 18px; padding: 0; }
+  .prose li { margin: 3px 0; }
 </style>
 </head>
 <body>
@@ -214,13 +325,16 @@
   <aside class="sidebar">
     <div class="brand"><span class="marker" style="background:var(--accent)"></span><span class="brand-txt">opencode-pi</span></div>
     <nav class="side-nav" id="sideNav">
-      <a href="#sec-conn"><span class="marker" style="background:var(--ac-conn)"></span><span class="nav-label">Connection</span></a>
-      <a href="#sec-sys"><span class="marker" style="background:var(--ac-sys)"></span><span class="nav-label">System</span></a>
-      <a href="#sec-model"><span class="marker" style="background:var(--ac-model)"></span><span class="nav-label">Model</span></a>
-      <a href="#sec-host"><span class="marker" style="background:var(--ac-host)"></span><span class="nav-label">Host</span></a>
-      <a href="#sec-pg"><span class="marker" style="background:var(--ac-pg)"></span><span class="nav-label">Playground</span></a>
-      <a href="#sec-streams"><span class="marker" style="background:var(--ac-stream)"></span><span class="nav-label">Streams</span></a>
-      <a href="#sec-evt"><span class="marker" style="background:var(--ac-evt)"></span><span class="nav-label">Log</span></a>
+      <a href="#" data-view="dashboard" class="active"><span class="marker" style="background:var(--ac-conn)"></span><span class="nav-label">Dashboard</span></a>
+      <a href="#" data-view="connections"><span class="marker" style="background:var(--ac-sys)"></span><span class="nav-label">Connections</span></a>
+      <a href="#" data-view="pipelines"><span class="marker" style="background:var(--ac-pg)"></span><span class="nav-label">Pipelines</span></a>
+      <a href="#" data-view="warehouse"><span class="marker" style="background:var(--ac-wh)"></span><span class="nav-label">Warehouse</span></a>
+      <a href="#" data-view="storage"><span class="marker" style="background:var(--ac-host)"></span><span class="nav-label">Storage</span></a>
+      <a href="#" data-view="logs"><span class="marker" style="background:var(--ac-evt)"></span><span class="nav-label">Logs</span></a>
+      <a href="#" data-view="metrics"><span class="marker" style="background:var(--ac-stream)"></span><span class="nav-label">Metrics</span></a>
+      <span class="nav-sep">Tools</span>
+      <a href="#" data-view="documents"><span class="marker" style="background:var(--ac-wh)"></span><span class="nav-label">Documents</span></a>
+      <a href="#" data-view="playground"><span class="marker" style="background:var(--ac-model)"></span><span class="nav-label">Playground</span></a>
     </nav>
   </aside>
 
@@ -228,96 +342,336 @@
     <div class="topbar">
       <h1><span class="dot" id="statusDot"></span>&nbsp;Control center<span class="sub">opencode-pi gateway</span></h1>
       <span class="spacer"></span>
-      <button id="btnTheme">Theme: Dark</button>
+      <div class="row actions" style="flex:1 0 auto; justify-content:flex-end">
+        <input type="password" id="key" placeholder="Admin API key" autocomplete="off" style="width:220px;margin:0">
+        <input type="password" id="iKey" placeholder="Inference key (playground)" autocomplete="off" style="width:220px;margin:0">
+        <button id="btnTheme" style="margin:0">Theme: Dark</button>
+      </div>
     </div>
 
-    <div class="dashboard">
-  <div class="card ac-conn" id="sec-conn">
-    <h2>Connection</h2>
-    <input type="password" id="key" placeholder="Admin API key" autocomplete="off">
-    <input type="password" id="iKey" placeholder="Inference API key (playground)" autocomplete="off">
-  </div>
+    <section class="view" id="view-dashboard">
+      <div class="dashboard">
+        <div class="card ac-conn span2" id="dash-sync">
+          <h2>Quick sync</h2>
+          <div class="row actions">
+            <button id="btnSync">Run quick sync</button>
+            <button id="btnSyncRestart" class="js-restart">Restart model</button>
+            <button id="btnSyncUpdate">Update model</button>
+            <span id="syncAt" class="muted">not run yet</span>
+          </div>
+          <div id="syncMsg" class="muted" style="margin:6px 0 4px">Tests every connection and pipeline reachable from the gateway.</div>
+          <div id="syncList"></div>
+        </div>
+        <div class="card ac-sys" id="dash-sys">
+          <h2>System</h2>
+          <table class="stats">
+            <tbody>
+              <tr><td class="k">CPU</td><td class="num" id="sCpu">—</td></tr>
+              <tr><td class="k">Memory</td><td class="num" id="sMem">—</td></tr>
+              <tr><td class="k">Temperature</td><td class="num" id="sTemp">—</td></tr>
+              <tr><td class="k">Disk used</td><td class="num" id="sDisk">—</td></tr>
+              <tr><td class="k">API calls/min</td><td class="num" id="sApm">—</td></tr>
+              <tr><td class="k">Token rate</td><td class="num" id="sTps">—</td></tr>
+              <tr><td class="k">Sample</td><td class="num dim" id="sAt">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card ac-model full" id="dash-model">
+          <h2>Model</h2>
+          <div class="row"><span class="k">name</span><span id="mName">—</span></div>
+          <div class="row"><span class="k">quantization</span><span id="mQuant">—</span></div>
+          <div class="row"><span class="k">gateway</span><span id="mGw" class="chip">—</span></div>
+          <div class="row"><span class="k">llama</span><span id="mLl" class="chip">—</span></div>
+          <div class="row"><span class="k">model loaded</span><span id="mLoaded" class="chip">—</span></div>
+          <div class="row"><span class="k">installed</span><span id="mInstalled">—</span></div>
+          <div class="row"><span class="k">size</span><span id="mSize">—</span></div>
+          <div class="row"><span class="k">installed at</span><span id="mAt">—</span></div>
+          <div class="progress" id="progressWrap" style="display:none"><div id="progressBar"></div></div>
+          <div id="modelAction" class="action-line" style="display:none"></div>
+          <div style="height:12px"></div>
+          <button id="btnRestart" class="js-restart">Restart model</button>
+          <button id="btnUpdate">Update model</button>
+        </div>
+        <div class="card ac-evt full" id="dash-stream-card">
+          <h2>Live activity</h2>
+          <div class="log" id="dashStream"></div>
+        </div>
+        <div class="card ac-stream full" id="pipe-streams">
+          <h2>Client request streams <span id="streamCount" class="chip" style="margin-left:6px">0 active</span> <span id="pStStatus" class="chip">—</span></h2>
+          <div class="row"><span class="k">events/sec</span><span id="pStEps">—</span></div>
+          <div class="row"><span class="k">bytes (≈ tokens)</span><span id="pStBytes">—</span></div>
+          <div class="row"><span class="k">last-seen</span><span id="pStLast">—</span></div>
+          <div class="table-scroll">
+          <table class="streams">
+            <thead>
+              <tr><th>Time</th><th>Request</th><th>Status</th><th>Source</th><th>Tokens P/C/T</th><th>tok/s</th><th>Duration</th></tr>
+            </thead>
+            <tbody id="streamRows"></tbody>
+          </table>
+          </div>
+          <div id="streamEmpty" style="color:var(--faint);font-size:13px;padding:8px 0">No inference requests yet.</div>
+          <textarea class="pnote" id="pnote-streams" placeholder="Note (optional)"></textarea>
+        </div>
+      </div>
+    </section>
 
-  <div class="card ac-sys" id="sec-sys">
-    <h2>System</h2>
-    <table class="stats">
-      <tbody>
-        <tr><td class="k">CPU</td><td class="num" id="sCpu">—</td></tr>
-        <tr><td class="k">Memory</td><td class="num" id="sMem">—</td></tr>
-        <tr><td class="k">Temperature</td><td class="num" id="sTemp">—</td></tr>
-        <tr><td class="k">Disk used</td><td class="num" id="sDisk">—</td></tr>
-        <tr><td class="k">API calls/min</td><td class="num" id="sApm">—</td></tr>
-        <tr><td class="k">Token rate</td><td class="num" id="sTps">—</td></tr>
-        <tr><td class="k">Sample</td><td class="num dim" id="sAt">—</td></tr>
-      </tbody>
-    </table>
-  </div>
+    <section class="view hide" id="view-connections">
+      <div class="dashboard">
+        <div class="card ac-conn" id="conn-gw">
+          <h2>Gateway <span id="cGw" class="chip">—</span></h2>
+          <div class="row"><span class="k">endpoint</span><span>localhost:8080 /health</span></div>
+          <div class="row"><span class="k">latency</span><span id="cGwLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cGwSync">—</span></div>
+        </div>
+        <div class="card ac-model" id="conn-llama">
+          <h2>llama-server <span id="cLl" class="chip">—</span></h2>
+          <div class="row"><span class="k">endpoint</span><span id="cLlEp">—</span></div>
+          <div class="row"><span class="k">latency</span><span id="cLlLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cLlSync">—</span></div>
+        </div>
+        <div class="card ac-model" id="conn-model">
+          <h2>Model store <span id="cMo" class="chip">—</span></h2>
+          <div class="row"><span class="k">endpoint</span><span>/api/model</span></div>
+          <div class="row"><span class="k">latency</span><span id="cMoLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cMoSync">—</span></div>
+        </div>
+        <div class="card ac-sys" id="conn-sys">
+          <h2>Host metrics <span id="cSys" class="chip">—</span></h2>
+          <div class="row"><span class="k">endpoint</span><span>/api/system</span></div>
+          <div class="row"><span class="k">latency</span><span id="cSysLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cSysSync">—</span></div>
+        </div>
+        <div class="card ac-evt" id="conn-logs">
+          <h2>Logs <span id="cLg" class="chip">—</span></h2>
+          <div class="row"><span class="k">endpoint</span><span>/api/logs</span></div>
+          <div class="row"><span class="k">latency</span><span id="cLgLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cLgSync">—</span></div>
+        </div>
+        <div class="card ac-stream" id="conn-reqs">
+          <h2>Requests <span id="cRq" class="chip">—</span></h2>
+          <div class="row"><span class="k">endpoint</span><span>/api/requests</span></div>
+          <div class="row"><span class="k">latency</span><span id="cRqLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cRqSync">—</span></div>
+        </div>
+        <div class="card ac-model" id="conn-oc">
+          <h2>opencode agent <span id="cOc" class="chip">—</span></h2>
+          <div class="row"><span class="k">endpoint</span><span>localhost:8080 /v1/chat/completions</span></div>
+          <div class="row"><span class="k">auth</span><span>inference key · Bearer</span></div>
+          <div class="row"><span class="k">model</span><span id="cOcModel">—</span></div>
+          <div class="row"><span class="k">latency</span><span id="cOcLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cOcSync">—</span></div>
+        </div>
+        <div class="card ac-host full" id="conn-host">
+          <h2>Host</h2>
+          <table class="stats">
+            <tbody>
+              <tr><td class="k">OS</td><td class="num" id="hOs">—</td></tr>
+              <tr><td class="k">Host OS</td><td class="num" id="hHostOs">—</td></tr>
+              <tr><td class="k">Host</td><td class="num" id="hHost">—</td></tr>
+              <tr><td class="k">Kernel</td><td class="num" id="hKernel">—</td></tr>
+              <tr><td class="k">Arch</td><td class="num" id="hArch">—</td></tr>
+              <tr><td class="k">Model</td><td class="num" id="hModel">—</td></tr>
+              <tr><td class="k">CPU</td><td class="num" id="hCpu">—</td></tr>
+              <tr><td class="k">Cores</td><td class="num" id="hCores">—</td></tr>
+              <tr><td class="k">Memory</td><td class="num" id="hMem">—</td></tr>
+              <tr><td class="k">Uptime</td><td class="num" id="hUp">—</td></tr>
+              <tr><td class="k">Local IP</td><td class="num" id="hIp">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card ac-wh full" id="conn-planned">
+          <h2>Planned connections</h2>
+          <div class="planned">analytics (:8081 FastAPI) — backend pending (PRD §6.13)</div>
+          <div class="planned">redis (warehoused, compose volume) — backend pending</div>
+          <div class="planned">sqlite + sqlite-vec (external mount) — backend pending</div>
+          <div class="planned">webhook ingest — backend pending</div>
+          <div class="planned">external Qwen client (SSE /api/analytics/stream) — backend pending</div>
+        </div>
+      </div>
+    </section>
 
-  <div class="card ac-model" id="sec-model">
-    <h2>Model</h2>
-    <div class="row"><span class="k">name</span><span id="mName">—</span></div>
-    <div class="row"><span class="k">quantization</span><span id="mQuant">—</span></div>
-    <div class="row"><span class="k">gateway</span><span id="mGw" class="chip">—</span></div>
-    <div class="row"><span class="k">llama</span><span id="mLl" class="chip">—</span></div>
-    <div class="row"><span class="k">model loaded</span><span id="mLoaded" class="chip">—</span></div>
-    <div class="row"><span class="k">installed</span><span id="mInstalled">—</span></div>
-    <div class="row"><span class="k">size</span><span id="mSize">—</span></div>
-    <div class="row"><span class="k">installed at</span><span id="mAt">—</span></div>
-    <div class="progress" id="progressWrap" style="display:none"><div id="progressBar"></div></div>
-    <pre id="modelLog" style="display:none"></pre>
-    <div style="height:12px"></div>
-    <button id="btnRestart">Restart model</button>
-    <button id="btnUpdate">Update model</button>
-  </div>
+    <section class="view hide" id="view-pipelines">
+      <div class="dashboard">
+        <div class="card ac-pg span2" id="pipe-inference">
+          <h2>llama inference <span id="pInfStatus" class="chip">—</span></h2>
+          <div class="row"><span class="k">kind</span><span>server · /v1/chat/completions</span></div>
+          <div class="row"><span class="k">endpoint</span><span id="pInfEp">—</span></div>
+          <div class="row"><span class="k">events/sec</span><span id="pInfEps">—</span></div>
+          <div class="row"><span class="k">bytes (≈ tokens)</span><span id="pInfBytes">—</span></div>
+          <div class="row"><span class="k">tok/s</span><span id="pInfTps">—</span></div>
+          <div class="row"><span class="k">last-seen</span><span id="pInfLast">—</span></div>
+          <textarea class="pnote" id="pnote-inference" placeholder="Note (optional)"></textarea>
+        </div>
+        <div class="card ac-model" id="pipe-update">
+          <h2>model update <span id="pUpStatus" class="chip">—</span></h2>
+          <div class="row"><span class="k">kind</span><span>job · download → verify → swap</span></div>
+          <div class="row"><span class="k">quant</span><span id="pUpQuant">—</span></div>
+          <div class="row"><span class="k">size</span><span id="pUpSize">—</span></div>
+          <div class="row"><span class="k">file</span><span id="pUpFile">—</span></div>
+          <div class="row"><span class="k">installed</span><span id="pUpAt">—</span></div>
+          <textarea class="pnote" id="pnote-update" placeholder="Note (optional)"></textarea>
+        </div>
+      </div>
+    </section>
 
-  <div class="card ac-host" id="sec-host">
-    <h2>Host</h2>
-    <table class="stats">
-      <tbody>
-        <tr><td class="k">OS</td><td class="num" id="hOs">—</td></tr>
-        <tr><td class="k">Host</td><td class="num" id="hHost">—</td></tr>
-        <tr><td class="k">Kernel</td><td class="num" id="hKernel">—</td></tr>
-        <tr><td class="k">Arch</td><td class="num" id="hArch">—</td></tr>
-        <tr><td class="k">Model</td><td class="num" id="hModel">—</td></tr>
-        <tr><td class="k">CPU</td><td class="num" id="hCpu">—</td></tr>
-        <tr><td class="k">Cores</td><td class="num" id="hCores">—</td></tr>
-        <tr><td class="k">Memory</td><td class="num" id="hMem">—</td></tr>
-        <tr><td class="k">Uptime</td><td class="num" id="hUp">—</td></tr>
-        <tr><td class="k">Local IP</td><td class="num" id="hIp">—</td></tr>
-      </tbody>
-    </table>
-  </div>
+    <section class="view hide" id="view-warehouse">
+      <div class="dashboard">
+        <div class="card ac-wh full">
+          <h2>Warehouse</h2>
+          <div class="planned">Designed but not built yet (PRD §6.13). This panel will surface the analytics warehouse through the gateway proxy (<code>/api/analytics/warehouse/*</code>):</div>
+          <div class="planned"><strong>SQLite</strong> — schema, tables, columns, row counts, raw columns (external mount, container-local)</div>
+          <div class="planned"><strong>Redis</strong> — key inventory by type, TTL, memory, persistence (warehoused volume, appendonly)</div>
+          <div class="planned">Reachability depends on the analytics service (`:8081`, internal to compose).</div>
+        </div>
+      </div>
+    </section>
 
-  <div class="card playground-card ac-pg" id="sec-pg">
-    <h2>Playground</h2>
-    <div class="conv" id="convo">
-      <div class="msg assistant hint" id="convHint">Send a message to start a conversation through /v1/chat/completions.</div>
-    </div>
-    <input id="chatInput" placeholder="Message the model…" autocomplete="off">
-    <div class="row actions" style="padding-top:4px">
-      <button id="btnSend">Send</button>
-      <button id="btnStop" disabled>Stop</button>
-    </div>
-  </div>
+    <section class="view hide" id="view-storage">
+      <div class="dashboard">
+        <div class="card full" id="st-disk">
+          <h2>Disk</h2>
+          <div class="usage-bar"><div id="stDiskBar"></div></div>
+          <div class="row"><span class="k">used</span><span id="stDiskPct">—</span></div>
+          <div class="row"><span class="k">available</span><span id="stDiskAvail">—</span></div>
+        </div>
+        <div class="card ac-model full" id="st-model">
+          <h2>Model file</h2>
+          <div class="row"><span class="k">file</span><span id="stModelFile">—</span></div>
+          <div class="row"><span class="k">quantization</span><span id="stModelQuant">—</span></div>
+          <div class="row"><span class="k">size</span><span id="stModelSize">—</span></div>
+          <div class="row"><span class="k">installed at</span><span id="stModelAt">—</span></div>
+          <div class="row"><span class="k">sha-256</span><span id="stModelSha">—</span></div>
+        </div>
+        <div class="card ac-wh full" id="st-paths">
+          <h2>Storage paths</h2>
+          <div class="row"><span class="k">llama runtime</span><span>/opt/llama</span></div>
+          <div class="row"><span class="k">model dir</span><span id="stModelDir">—</span></div>
+          <div class="row"><span class="k">ml artifacts (planned)</span><span>/opt/qwen-ml (backend pending)</span></div>
+          <div class="row"><span class="k">warehouse (planned)</span><span>sqlite external mount + redis volume (backend pending)</span></div>
+        </div>
+      </div>
+    </section>
 
-  <div class="card streams-card ac-stream" id="sec-streams">
-    <h2>Inference streams <span id="streamCount" class="chip" style="margin-left:6px">0 active</span></h2>
-    <div class="table-scroll">
-    <table class="streams">
-      <thead>
-        <tr><th>Time</th><th>Request</th><th>Status</th><th>Tokens P/C/T</th><th>tok/s</th><th>Duration</th></tr>
-      </thead>
-      <tbody id="streamRows"></tbody>
-    </table>
-    </div>
-    <div id="streamEmpty" style="color:var(--faint);font-size:13px;padding:8px 0">No inference requests yet.</div>
-  </div>
+    <section class="view hide" id="view-logs">
+      <div class="dashboard">
+        <div class="card events-card ac-evt full">
+          <h2>Event log <button id="btnClearLog" style="float:right">Clear</button></h2>
+          <div class="filter-bar" id="logFilters">
+            <button data-level="all" class="active">All</button>
+            <button data-level="error">Errors</button>
+            <button data-level="warn">Warn+</button>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </section>
 
-  <div class="card events-card ac-evt" id="sec-evt">
-    <h2>Realtime events <button id="btnClearLog" style="float:right">Clear</button></h2>
-    <div class="log" id="log"></div>
-  </div>
-    </div>
+    <section class="view hide" id="view-metrics">
+      <div class="dashboard">
+        <div class="card ac-stream full">
+          <h2>Live metrics</h2>
+          <div class="spark-grid">
+            <div class="spark-item" style="border-top-color:var(--ac-sys)"><h3>CPU</h3><div class="mstat" id="mCpu">—</div><canvas class="spark" id="spCpu"></canvas></div>
+            <div class="spark-item" style="border-top-color:var(--ac-sys)"><h3>Memory</h3><div class="mstat" id="mMem">—</div><canvas class="spark" id="spMem"></canvas></div>
+            <div class="spark-item" style="border-top-color:var(--ac-host)"><h3>Temperature</h3><div class="mstat" id="mTemp">—</div><canvas class="spark" id="spTemp"></canvas></div>
+            <div class="spark-item" style="border-top-color:var(--ac-stream)"><h3>API calls/min</h3><div class="mstat" id="mApm">—</div><canvas class="spark" id="spApm"></canvas></div>
+            <div class="spark-item" style="border-top-color:var(--ac-model)"><h3>tok/s</h3><div class="mstat" id="mTps">—</div><canvas class="spark" id="spTps"></canvas></div>
+          </div>
+        </div>
+        <div class="card ac-host full">
+          <h2>Host &amp; runtime</h2>
+          <div data-neo class="neofetch"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view hide" id="view-documents">
+      <div class="dashboard">
+        <div class="card ac-wh full">
+          <h2>Overview</h2>
+          <div class="prose">
+            opencode-pi is a local AI gateway on a Raspberry Pi. The <b>opencode agent</b>
+            points its OpenAI-compatible provider at the gateway's <span class="k mono">/v1</span>
+            endpoint (<span class="method">localhost:8080 /v1/chat/completions</span>, bearer
+            <span class="k mono">INFERENCE_API_KEY</span>) and the gateway runs
+            <span class="k mono">llama-server</span> (llama.cpp) inside its Docker container to
+            serve <span class="k mono">Qwen3-1.7B</span> (4-bit Q4_K_M, context 32768).
+            <ul>
+              <li><span class="k">Control plane</span> — admin API under <span class="method">/api/*</span> plus the realtime <span class="method">/ws</span> stream; key via <span class="k mono">x-api-key</span>.</li>
+              <li><span class="k">Inference plane</span> — OpenAI-compatible <span class="method">/v1/*</span>; key via <span class="k mono">Authorization: Bearer</span> or <span class="k mono">x-api-key</span>.</li>
+              <li><span class="k">Provisioning</span> — <span class="k mono">scripts/install.sh</span> installs llama-server + the 4-bit model, <span class="k mono">scripts/update.sh</span> swaps llama.cpp and the model, <span class="k mono">scripts/cleanup.sh</span> removes old artifacts.</li>
+              <li><span class="k">Storage</span> — model GGUF lives on NVMe at <span class="k mono">/opt/qwen-model</span>, mounted into the container at <span class="k mono">/models</span>. A warehouse SQLite store is planned on NVMe too (PRD §6.13).</li>
+              <li><span class="k">Analytics</span> — metrics/sparkline sampling is live under <span class="method">/api/metrics</span>; feature/embedding analytics is a planned microservice.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card ac-pg full">
+          <h2>Endpoints</h2>
+          <table class="doc">
+            <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td class="method">GET</td><td class="mono">/health</td><td>none</td><td>Liveness probe used by the gateway connection check</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/v1/models</td><td>inference</td><td>Model list for OpenAI-compatible clients (ID aliased to <span class="mono">Qwen3-1.7B</span>)</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/v1/chat/completions</td><td>inference</td><td>Chat completions forwarded to llama-server</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/status</td><td>admin</td><td>Gateway / llama / model status snapshot</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/model</td><td>admin</td><td>Model metadata + live llama args</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/api/model/restart</td><td>admin</td><td>Restart llama-server (reloads context flags)</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/api/model/update</td><td>admin</td><td>Re-download / verify / install the model GGUF</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/system</td><td>admin</td><td>Live CPU / memory / temp / disk metrics</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/system/host</td><td>admin</td><td>Host identity, disk, and NVMe/mount info</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/metrics</td><td>admin</td><td>Sampled metrics history for the sparkline charts</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/logs</td><td>admin</td><td>Recent structured log entries</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/requests</td><td>admin</td><td>Rendered request ring buffer</td></tr>
+              <tr><td class="method">WS</td><td class="mono">/ws?key=…</td><td>admin</td><td>Realtime event stream (status, requests, logs, metrics)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card ac-conn full">
+          <h2>Environment variables</h2>
+          <table class="doc">
+            <thead><tr><th>Variable</th><th>Purpose</th><th>Default</th></tr></thead>
+            <tbody>
+              <tr><td class="k">GATEWAY_HOST</td><td>Gateway bind address</td><td class="mono">0.0.0.0</td></tr>
+              <tr><td class="k">GATEWAY_PORT</td><td>Gateway listen port</td><td class="mono">8080</td></tr>
+              <tr><td class="k">INFERENCE_API_KEY</td><td>Key for /v1/* (opencode agent, playground)</td><td>required</td></tr>
+              <tr><td class="k">ADMIN_API_KEY</td><td>Key for /api/* and /ws</td><td>required</td></tr>
+              <tr><td class="k">LLAMA_HOST</td><td>llama-server bind address</td><td class="mono">127.0.0.1</td></tr>
+              <tr><td class="k">LLAMA_PORT</td><td>llama-server port</td><td class="mono">8000</td></tr>
+              <tr><td class="k">LLAMA_BIN</td><td>llama-server path in the container</td><td class="mono">/opt/llama/llama-server</td></tr>
+              <tr><td class="k">LLAMA_CONTEXT_SIZE</td><td>Context window (Qwen3-1.7B max 32768)</td><td class="mono">32768</td></tr>
+              <tr><td class="k">LLAMA_THREADS</td><td>CPU threads</td><td>unset (llama decides)</td></tr>
+              <tr><td class="k">LLAMA_BATCH_SIZE</td><td>Prompt batch size</td><td>unset</td></tr>
+              <tr><td class="k">LLAMA_PARALLEL</td><td>Parallel sequences</td><td>unset</td></tr>
+              <tr><td class="k">LLAMA_EXTRA_ARGS</td><td>Additional llama-server flags</td><td>unset</td></tr>
+              <tr><td class="k">MODEL_NAME</td><td>Display name / alias exposed by /v1</td><td class="mono">Qwen3-1.7B</td></tr>
+              <tr><td class="k">MODEL_URL</td><td>GGUF download URL</td><td>required</td></tr>
+              <tr><td class="k">MODEL_FILE</td><td>Active filename under /models</td><td class="mono">current.gguf</td></tr>
+              <tr><td class="k">MODEL_SHA256</td><td>Expected download checksum</td><td>optional</td></tr>
+              <tr><td class="k">MODEL_QUANT</td><td>Quantization label (Q4_K_M)</td><td>—</td></tr>
+              <tr><td class="k">MODEL_DIR</td><td>Host model directory (NVMe)</td><td class="mono">/opt/qwen-model</td></tr>
+              <tr><td class="k">AUTO_UPDATE_MODEL</td><td>Opt-in automatic model updates</td><td class="mono">false</td></tr>
+              <tr><td class="k">AUTO_UPDATE_INTERVAL</td><td>Model update cadence</td><td class="mono">24h</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="view hide" id="view-playground">
+      <div class="dashboard">
+        <div class="card playground-card ac-pg full">
+          <h2>Playground</h2>
+          <div class="conv" id="convo">
+            <div class="msg assistant hint" id="convHint">Send a message to start a conversation through /v1/chat/completions.</div>
+          </div>
+          <input id="chatInput" placeholder="Message the model…" autocomplete="off">
+          <div class="row actions" style="padding-top:4px">
+            <button id="btnSend">Send</button>
+            <button id="btnStop" disabled>Stop</button>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
   </div>
 
@@ -348,23 +702,6 @@
     const m = Math.floor((s % 3600) / 60);
     return (d > 0 ? d + "d " : "") + h + "h " + m + "m";
   }
-  async function loadHost() {
-    const hdrs = headers();
-    if (!hdrs) return;
-    try {
-      const h = await (await fetch("/api/system/host", { headers: hdrs })).json();
-      $s("hOs", h.os);
-      $s("hHost", h.hostname);
-      $s("hKernel", h.kernel);
-      $s("hArch", h.arch);
-      $s("hModel", h.model || "—");
-      $s("hCpu", h.cpuModel);
-      $s("hCores", String(h.cpuCores));
-      $s("hMem", fmtBytes(h.memoryTotalBytes));
-      $s("hUp", fmtUptime(h.uptimeSeconds));
-      $s("hIp", h.localIp || "—");
-    } catch {}
-  }
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => (
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
@@ -381,6 +718,7 @@
     q("btnTheme").textContent = "Theme: " + label;
     const tb = q("btnThemeBar");
     if (tb) tb.textContent = "Theme: " + label;
+    renderMetrics(true);
   }
   function cycleTheme() {
     const cur = THEMES.indexOf(document.body.dataset.theme);
@@ -400,7 +738,18 @@
     if (ok.includes(v)) el.classList.add("ok");
     else if (err.includes(v)) el.classList.add("err");
     else if (v !== "—") el.classList.add("warn");
+    return el;
   }
+
+  function showView(name) {
+    document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hide", v.id !== "view-" + name));
+    document.querySelectorAll("#sideNav a").forEach((a) => a.classList.toggle("active", a.dataset.view === name));
+    if (name === "metrics") renderMetrics(true);
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll("#sideNav a").forEach((a) => {
+    a.addEventListener("click", (e) => { e.preventDefault(); showView(a.dataset.view); });
+  });
 
   function buildStatusbar() {
     const bar = q("statusbar");
@@ -437,9 +786,10 @@
     q("sbGw").className = "chip";
     q("sbGw").classList.add(state.gateway === "online" ? "ok" : "err");
     q("sbGw").textContent = state.gateway === "online" ? "online" : "—";
+    const llamaReady = state.llama === "ready" || state.llama === "online";
     q("sbLl").className = "chip";
-    q("sbLl").classList.add(state.llama === "online" ? "ok" : "err");
-    q("sbLl").textContent = state.llama === "online" ? "online" : "offline";
+    q("sbLl").classList.add(llamaReady ? "ok" : (state.llama === "starting" || state.llama === "restarting" ? "warn" : "err"));
+    q("sbLl").textContent = llamaReady ? "ready" : (state.llama ? state.llama : "offline");
     q("sbModel").className = "chip";
     q("sbModel").classList.add("warn");
     q("sbModel").textContent = state.model || "—";
@@ -451,19 +801,6 @@
   function tickClock() {
     if (q("sbClock")) q("sbClock").textContent = new Date().toLocaleString();
   }
-  function setupScrollspy() {
-    const links = [...document.querySelectorAll("#sideNav a")];
-    const sections = links.map((a) => q(a.getAttribute("href").slice(1)));
-    const onScroll = () => {
-      const pos = window.scrollY + 120;
-      let current = sections[0]?.id;
-      for (const s of sections) if (s && s.offsetTop <= pos) current = s.id;
-      links.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + current));
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    onScroll();
-  }
 
   function loadRank(v) {
     if (v == null) return "";
@@ -473,6 +810,14 @@
     return "t4";
   }
   const sysState = {};
+  const hostState = {};
+  const METRIC_HIST = { cpu: [], mem: [], temp: [], apm: [], tps: [] };
+  function pushMetric(key, v) {
+    const a = METRIC_HIST[key];
+    if (v == null) a.push(null);
+    else a.push(v);
+    if (a.length > 240) a.shift();
+  }
   function renderSystem(s) {
     Object.assign(sysState, s);
     const setPct = (id, v) => {
@@ -494,19 +839,33 @@
     q("sTps").textContent = sysState.tokensPerSecond != null ? sysState.tokensPerSecond.toFixed(1) : "—";
     q("sApm").textContent = sysState.requestsPerMinute != null ? String(sysState.requestsPerMinute) : "—";
     q("sAt").textContent = sysState.timestamp ? new Date(sysState.timestamp).toLocaleTimeString() : "—";
+    pushMetric("cpu", sysState.cpu);
+    pushMetric("mem", sysState.memory);
+    pushMetric("temp", sysState.temperature);
+    pushMetric("tps", sysState.tokensPerSecond);
+    pushMetric("apm", sysState.requestsPerMinute);
+    renderMetrics();
+    renderStorage(disk);
+    renderNeofetch();
   }
 
+  const lastStatus = {};
+  let modelMeta = {};
   async function refresh() {
     try {
-      await fetch("/health");
-      dot.className = "dot ok pulse";
+      if (!modelRestartState.inFlight) {
+        await fetch("/health");
+        dot.className = "dot ok pulse";
+      }
       const hdrs = headers();
       if (hdrs) {
         const s = await (await fetch("/api/status", { headers: hdrs })).json();
+        Object.assign(lastStatus, s);
         chip("mGw", s.gateway);
         chip("mLl", s.llama);
         chip("mLoaded", s.modelLoaded ? "loaded" : "false");
         const m = await (await fetch("/api/model", { headers: hdrs })).json();
+        modelMeta = m;
         $s("mName", m.name);
         $s("mQuant", m.quantization ?? "—");
         $s("mInstalled", String(m.installed));
@@ -521,6 +880,8 @@
         renderSystem(sys);
         renderStatusbar({ gateway: s.gateway, llama: s.llama, model: m.name, ...sys });
         loadHost();
+        renderConnections();
+        renderPipelines();
         try { await loadRequests(); } catch {}
       }
     } catch (e) {
@@ -528,22 +889,348 @@
     }
   }
 
+  const modelRestartState = { inFlight: false, pollId: null };
+  function setModelAction(text, cls) {
+    const el = q("modelAction");
+    el.style.display = "block";
+    el.textContent = text;
+    el.className = "action-line" + (cls ? " " + cls : "");
+  }
+  function clearModelAction() {
+    const el = q("modelAction");
+    el.style.display = "none";
+    el.textContent = "";
+    el.className = "action-line";
+  }
+  function beginRestarting() {
+    modelRestartState.inFlight = true;
+    document.querySelectorAll(".js-restart").forEach((b) => { b.disabled = true; b.textContent = "Restarting…"; });
+    setModelAction("Restarting model…", "warn");
+    dot.className = "dot warn";
+  }
+  function finishRestarting(ok, msg) {
+    modelRestartState.inFlight = false;
+    if (modelRestartState.pollId !== null) {
+      clearInterval(modelRestartState.pollId);
+      modelRestartState.pollId = null;
+    }
+    document.querySelectorAll(".js-restart").forEach((b) => { b.disabled = false; b.textContent = "Restart model"; });
+    refresh();
+    if (!ok) {
+      setModelAction("Restart failed: " + msg, "err");
+      return;
+    }
+    setModelAction(msg, "ok");
+    setTimeout(clearModelAction, 2500);
+  }
+  function pollForReady() {
+    if (modelRestartState.pollId !== null) clearInterval(modelRestartState.pollId);
+    modelRestartState.pollId = setInterval(async () => {
+      const hdrs = headers();
+      if (!hdrs) return;
+      try {
+        const s = await (await fetch("/api/status", { headers: hdrs })).json();
+        if (s.llama === "ready" && s.modelLoaded === true) {
+          finishRestarting(true, "Model ready");
+        } else if (s.llama === "error" || s.llama === "stopped") {
+          finishRestarting(false, "llama is " + s.llama);
+        }
+      } catch {
+        finishRestarting(false, "status unavailable");
+      }
+    }, 1000);
+  }
+  async function restartModel() {
+    const hdrs = headers();
+    if (!hdrs) { setModelAction("Enter the admin API key first", "err"); return; }
+    if (modelRestartState.inFlight) return;
+    beginRestarting();
+    try {
+      const r = await fetch("/api/model/restart", { method: "POST", headers: hdrs });
+      const body = await r.json();
+      if (!r.ok) {
+        finishRestarting(false, "HTTP " + r.status + ": " + (body.detail || body.error || JSON.stringify(body)));
+        return;
+      }
+      dot.className = "dot warn";
+      setModelAction("Restarting model…", "warn");
+      void pollForReady();
+    } catch (e) {
+      finishRestarting(false, e.message);
+    }
+  }
   async function act(path, btn) {
     const hdrs = headers();
-    if (!hdrs) return;
+    if (!hdrs) { setModelAction("Enter the admin API key first", "err"); return; }
     btn.disabled = true;
+    setModelAction(path + "…", "warn");
     try {
       const r = await fetch(path, { method: "POST", headers: hdrs });
       const body = await r.json();
-      q("modelLog").style.display = "block";
-      q("modelLog").textContent = path + " -> HTTP " + r.status + ": " + JSON.stringify(body);
+      if (r.ok) {
+        setModelAction(path + " -> HTTP " + r.status + ": " + JSON.stringify(body), "ok");
+        setTimeout(clearModelAction, 2500);
+      } else {
+        setModelAction(path + " -> HTTP " + r.status + ": " + (body.detail || body.error || JSON.stringify(body)), "err");
+      }
+    } catch (e) {
+      setModelAction(path + " failed: " + e.message, "err");
     } finally {
       btn.disabled = false;
       refresh();
     }
   }
-  q("btnRestart").addEventListener("click", () => act("/api/model/restart", q("btnRestart")));
+  q("btnRestart").addEventListener("click", restartModel);
   q("btnUpdate").addEventListener("click", () => act("/api/model/update", q("btnUpdate")));
+  q("btnSyncRestart").addEventListener("click", restartModel);
+  q("btnSyncUpdate").addEventListener("click", () => act("/api/model/update", q("btnSyncUpdate")));
+  const syncResults = {};
+  function runCheck(c, hdrs, ikey) {
+    const t0 = performance.now();
+    return Promise.resolve()
+      .then(() => c.run(hdrs, ikey))
+      .then((st) => ({ ...st, ms: Math.round(performance.now() - t0) }))
+      .catch((e) => ({ ok: false, note: e.message || "error", ms: Math.round(performance.now() - t0) }));
+  }
+  const CHECKS = [
+    { id: "gw", name: "gateway", kind: "connection", run: async () => {
+        const r = await fetch("/health");
+        return { ok: r.ok, note: "http " + r.status };
+      } },
+    { id: "sys", name: "host metrics", kind: "connection", needKey: true, run: async (hdrs) => {
+        const r = await fetch("/api/system", { headers: hdrs });
+        const b = await r.json();
+        return { ok: r.ok, note: "cpu " + (b.cpu != null ? b.cpu.toFixed(0) + "%" : "—") + " · mem " + (b.memory != null ? b.memory.toFixed(0) + "%" : "—") };
+      } },
+    { id: "llama", name: "llama-server", kind: "connection", needKey: true, run: async (hdrs) => {
+        const s = await (await fetch("/api/status", { headers: hdrs })).json();
+        return { ok: s.llama === "ready" || s.llama === "online", note: "llama " + s.llama + (s.modelLoaded ? " · loaded" : "") };
+      } },
+    { id: "model", name: "model store", kind: "connection", needKey: true, run: async (hdrs) => {
+        const m = await (await fetch("/api/model", { headers: hdrs })).json();
+        return { ok: !!m.installed && m.loadingStatus !== "error", note: (m.quantization || m.name || "model") + (m.installed ? " · installed" : " · missing") };
+      } },
+    { id: "logs", name: "logs", kind: "connection", needKey: true, run: async (hdrs) => {
+        const r = await fetch("/api/logs", { headers: hdrs });
+        return { ok: r.ok, note: "http " + r.status };
+      } },
+    { id: "reqs", name: "requests", kind: "connection", needKey: true, run: async (hdrs) => {
+        const r = await fetch("/api/requests", { headers: hdrs });
+        const b = await r.json();
+        const n = (b.entries || []).length;
+        return { ok: r.ok, note: n + " recorded" };
+      } },
+    { id: "oc", name: "opencode agent", kind: "connection", needInference: true, run: async (_hdrs, ikey) => {
+        const r = await fetch("/v1/models", { headers: { Authorization: "Bearer " + ikey } });
+        const b = await r.json().catch(() => ({}));
+        const ids = (b.data || []).map((m) => m.id).join(", ");
+        return { ok: r.ok, note: ids ? "serving " + ids : "http " + r.status };
+      } },
+    { id: "p_inf", name: "llama inference", kind: "pipeline", needKey: true, run: async (hdrs) => {
+        const s = await (await fetch("/api/status", { headers: hdrs })).json();
+        return { ok: s.llama === "ready" || s.llama === "online", note: "endpoint /v1/chat/completions" };
+      } },
+    { id: "p_up", name: "model update", kind: "pipeline", needKey: true, run: async (hdrs) => {
+        const m = await (await fetch("/api/model", { headers: hdrs })).json();
+        return { ok: m.loadingStatus !== "error", note: m.loadingStatus || "idle" };
+      } },
+    { id: "p_str", name: "request streams", kind: "pipeline", needKey: true, run: async (hdrs) => {
+        const b = await (await fetch("/api/requests", { headers: hdrs })).json();
+        const entries = b.entries || [];
+        const active = entries.filter((e) => e.status === "started").length;
+        return { ok: true, note: active > 0 ? active + " active" : "idle (" + entries.length + " recent)" };
+      } },
+  ];
+  let syncRunning = false;
+  async function syncAll() {
+    if (syncRunning) return;
+    syncRunning = true;
+    const btn = q("btnSync");
+    btn.disabled = true;
+    btn.textContent = "Running…";
+    const list = q("syncList");
+    list.textContent = "";
+    const hdrs = headers();
+    const ikey = (iKeyInput.value || localStorage.getItem("inferenceKey") || "").trim();
+    const noKey = !hdrs;
+    let okCnt = 0, failCnt = 0, skipCnt = 0, skipNote = "";
+    for (const c of CHECKS) {
+      const row = document.createElement("div");
+      row.className = "sync-item";
+      const name = document.createElement("span");
+      name.className = "s-name";
+      name.textContent = c.name;
+      const kind = document.createElement("span");
+      kind.className = "s-kind";
+      kind.textContent = c.kind;
+      const note = document.createElement("span");
+      note.className = "s-note";
+      note.textContent = "…";
+      const lat = document.createElement("span");
+      lat.className = "s-lat";
+      lat.textContent = "";
+      row.append(name, kind, note, lat);
+      list.appendChild(row);
+      if (c.needKey && noKey) {
+        row.classList.add("warn");
+        note.textContent = "admin key required";
+        syncResults[c.id] = { ok: false, note: "admin key required", ms: null, when: Date.now(), skipped: true };
+        skipCnt += 1;
+        skipNote = skipNote || "no admin key";
+      } else if (c.needInference && !ikey) {
+        row.classList.add("warn");
+        note.textContent = "inference key required";
+        syncResults[c.id] = { ok: false, note: "inference key required", ms: null, when: Date.now(), skipped: true };
+        skipCnt += 1;
+        skipNote = skipNote || "no inference key";
+      } else {
+        const r = await runCheck(c, hdrs, ikey);
+        syncResults[c.id] = { ...r, when: Date.now() };
+        row.classList.add(r.ok ? "ok" : "err");
+        note.textContent = r.note || (r.ok ? "ok" : "failed");
+        lat.textContent = r.ms != null ? r.ms + " ms" : "";
+        if (r.ok) okCnt += 1; else failCnt += 1;
+      }
+    }
+    btn.disabled = false;
+    btn.textContent = "Run quick sync";
+    const agg = okCnt + " ok" + " · " + failCnt + " failed" + (skipCnt ? " · " + skipCnt + " skipped (" + skipNote + ")" : "");
+    q("syncMsg").textContent = agg + " — " + new Date().toLocaleTimeString();
+    q("syncAt").textContent = "last sync " + new Date().toLocaleTimeString();
+    renderConnections();
+    renderPipelines();
+    syncRunning = false;
+  }
+  q("btnSync").addEventListener("click", syncAll);
+
+  const CONN_ID_MAP = {
+    gw: ["cGw", "cGwLat", "cGwSync"],
+    llama: ["cLl", "cLlLat", "cLlSync"],
+    model: ["cMo", "cMoLat", "cMoSync"],
+    sys: ["cSys", "cSysLat", "cSysSync"],
+    logs: ["cLg", "cLgLat", "cLgSync"],
+    reqs: ["cRq", "cRqLat", "cRqSync"],
+    oc: ["cOc", "cOcLat", "cOcSync"],
+  };
+  function renderConnections() {
+    const meta = modelMeta || {};
+    const st = lastStatus;
+    if (st.gateway) chip("cGw", st.gateway === "online" ? "online" : "offline");
+    if (st.llama) chip("cLl", st.llama);
+    if (meta.loadingStatus) chip("cMo", meta.installed ? meta.loadingStatus : "missing");
+    $s("cOcModel", [meta.name, meta.quantization].filter(Boolean).join(" ") || "—");
+    if (sysState.cpu != null) chip("cSys", "online");
+    chip("cLlEp", llamaEndpoint(meta.llamaArgs));
+    for (const [id, idx] of Object.entries(CONN_ID_MAP)) {
+      const r = syncResults[id];
+      if (!r) continue;
+      const statusEl = q(idx[0]);
+      if (r.skipped) {
+        statusEl.textContent = "no key";
+        statusEl.className = "chip warn";
+      } else {
+        statusEl.textContent = r.ok ? "ok" : "failed";
+        statusEl.className = "chip " + (r.ok ? "ok" : "err");
+      }
+      q(idx[1]).textContent = r.ms != null ? r.ms + " ms" : "—";
+      q(idx[2]).textContent = new Date(r.when).toLocaleTimeString();
+    }
+  }
+
+  function llamaEndpoint(args) {
+    const h = (args || "").match(/--host\s+(\S+)/);
+    const p = (args || "").match(/--port\s+(\S+)/);
+    return (h ? h[1] : "?") + ":" + (p ? p[1] : "?");
+  }
+  function pipelineStats() {
+    let bytes = 0, last = null, active = 0;
+    for (const r of reqs.values()) {
+      bytes += r.totalTokens || 0;
+      if (r.startedAt && (!last || r.startedAt > last)) last = r.startedAt;
+      if (r.status === "started") active += 1;
+    }
+    return { bytes, last, active };
+  }
+  function eventsPerSec() {
+    return sysState.requestsPerMinute != null ? (sysState.requestsPerMinute / 60) : null;
+  }
+  function renderPipelines() {
+    const ps = pipelineStats();
+    const meta = modelMeta || {};
+    const st = lastStatus;
+    const eps = eventsPerSec();
+    chip("pInfStatus", st.llama || "—");
+    $s("pInfEp", llamaEndpoint(meta.llamaArgs));
+    $s("pInfEps", eps != null ? eps.toFixed(2) : "—");
+    $s("pInfBytes", ps.bytes ? fmtBytes(ps.bytes) : "—");
+    $s("pInfTps", sysState.tokensPerSecond != null ? sysState.tokensPerSecond.toFixed(1) : "—");
+    $s("pInfLast", ps.last ? new Date(ps.last).toLocaleTimeString() : "—");
+    chip("pUpStatus", meta.loadingStatus || st.model || "—");
+    $s("pUpQuant", meta.quantization ?? "—");
+    $s("pUpSize", meta.sizeBytes ? fmtBytes(meta.sizeBytes) : "—");
+    $s("pUpFile", meta.file ?? "—");
+    $s("pUpAt", meta.installedAt ?? "—");
+    chip("pStStatus", ps.active > 0 ? "active" : "idle");
+    $s("pStEps", eps != null ? eps.toFixed(2) : "—");
+    $s("pStBytes", ps.bytes ? fmtBytes(ps.bytes) : "—");
+    $s("pStLast", ps.last ? new Date(ps.last).toLocaleTimeString() : "—");
+  }
+  function wirePipeNotes() {
+    ["inference", "update", "streams"].forEach((id) => {
+      const el = q("pnote-" + id);
+      el.value = localStorage.getItem("pipenote-" + id) || "";
+      el.addEventListener("input", () => localStorage.setItem("pipenote-" + id, el.value));
+    });
+  }
+
+  function renderStorage(disk) {
+    const d = disk || sysState.disk;
+    const pct = d && d.usedPercent != null ? d.usedPercent : null;
+    if (pct != null) {
+      q("stDiskBar").style.width = pct + "%";
+      q("stDiskPct").textContent = pct.toFixed(1) + "%";
+    }
+    q("stDiskAvail").textContent = d && d.availableBytes != null ? fmtBytes(d.availableBytes) + " available" : "—";
+    const meta = modelMeta || {};
+    if (meta.file) $s("stModelFile", meta.file);
+    if (meta.quantization) $s("stModelQuant", meta.quantization);
+    if (meta.sizeBytes) $s("stModelSize", fmtBytes(meta.sizeBytes));
+    if (meta.installedAt) $s("stModelAt", meta.installedAt);
+    if (meta.sha256) $s("stModelSha", meta.sha256.slice(0, 16) + "…");
+  }
+
+  let LOG_LEVEL = "all";
+  let historyLoaded = false;
+  let historyLoading = false;
+  function logLevelPass(level) {
+    if (LOG_LEVEL === "all") return true;
+    if (LOG_LEVEL === "error") return level === "error";
+    return level === "warn" || level === "error";
+  }
+  async function loadLogHistory() {
+    if (historyLoaded || historyLoading) return;
+    const hdrs = headers();
+    if (!hdrs) return;
+    historyLoading = true;
+    try {
+      const r = await (await fetch("/api/logs", { headers: hdrs })).json();
+      for (const e of r.entries || []) appendLog("log", e.msg, e.level);
+      historyLoaded = true;
+    } catch {}
+    historyLoading = false;
+  }
+  function clearLogForFilter() {
+    q("log").textContent = "";
+    historyLoaded = false;
+    loadLogHistory();
+  }
+  q("logFilters").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    LOG_LEVEL = b.dataset.level;
+    q("logFilters").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+    clearLogForFilter();
+  });
 
   function parseLogLine(msg) {
     const m = /Model download: (\d+)%/.exec(msg);
@@ -590,12 +1277,14 @@
         "<td>" + new Date(r.startedAt).toLocaleTimeString() + "</td>" +
         '<td title="' + escapeHtml(r.id) + (r.path ? " · " + escapeHtml(r.path) : "") + '">' + shortId(r.id) + "</td>" +
         "<td><span" + errClick + ">" + escapeHtml(r.status) + "</span></td>" +
+        "<td>" + escapeHtml(r.source || "—") + (r.ip && r.ip !== "?" ? " <span class=\"dim\">" + escapeHtml(r.ip) + "</span>" : "") + "</td>" +
         '<td class="num' + (r.totalTokens == null ? " dim" : "") + '">' + fmtToks(r) + "</td>" +
         '<td class="num' + (r.tokensPerSecond == null ? " dim" : " " + tpsRank(r.tokensPerSecond)) + '">' +
           (r.tokensPerSecond != null ? r.tokensPerSecond.toFixed(1) : "—") + "</td>" +
         '<td class="num">' + fmtDur(r.durationMs) + "</td>";
       tbody.appendChild(tr);
     }
+    renderPipelines();
   }
   async function loadRequests() {
     const hdrs = headers();
@@ -619,7 +1308,7 @@
         } else {
           const d = document.createElement("tr");
           d.className = "errDetail";
-          d.innerHTML = '<td colspan="6"><span style="color:var(--faint)">reason:</span> ' + escapeHtml(rec.error || "—") + "</td>";
+          d.innerHTML = '<td colspan="7"><span style="color:var(--faint)">reason:</span> ' + escapeHtml(rec.error || "—") + "</td>";
           tr.after(d);
         }
       }
@@ -633,6 +1322,8 @@
       method: obj.method,
       path: obj.path,
       model: obj.model,
+      source: obj.source,
+      ip: obj.ip,
       status: obj.status,
       startedAt: obj.timestamp || Date.now(),
       durationMs: obj.durationMs,
@@ -674,7 +1365,7 @@
     try {
       const r = await fetch("/v1/chat/completions", {
         method: "POST",
-        headers: { "content-type": "application/json", "authorization": "Bearer " + iKey },
+        headers: { "content-type": "application/json", "authorization": "Bearer " + iKey, "x-opencode-pi-source": "playground" },
         body: JSON.stringify({ model: "Qwen3-1.7B", stream: true, messages: convo }),
         signal: chatAbort.signal,
       });
@@ -741,6 +1432,7 @@
     return m ? m[1] : null;
   }
   function jumpToLog(reqId) {
+    showView("logs");
     const log = q("log");
     const matches = [...log.querySelectorAll('[data-req="' + reqId + '"]')];
     if (!matches.length) {
@@ -756,9 +1448,8 @@
     }
     matches[0].scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
-  function appendLog(type, text, level, reqId) {
-    const el = q("log");
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  function appendEvt(container, type, text, level, reqId, cap) {
+    const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
     const [cls, label] = logTagInfo(type);
     const colorCls = type === "log" && (level === "error" || level === "warn") ? (level === "error" ? "err" : "warn") : cls;
     const row = document.createElement("div");
@@ -774,11 +1465,185 @@
     msg.className = "msg";
     msg.textContent = text;
     row.append(t, tag, msg);
-    el.appendChild(row);
-    while (el.children.length > 300) el.removeChild(el.firstChild);
-    if (nearBottom) el.scrollTop = el.scrollHeight;
+    container.appendChild(row);
+    while (container.children.length > cap) container.removeChild(container.firstChild);
+    if (nearBottom) container.scrollTop = container.scrollHeight;
+  }
+  function appendLog(type, text, level, reqId) {
+    if (!logLevelPass(level)) return;
+    appendEvt(q("log"), type, text, level, reqId, 400);
+  }
+  function appendStream(type, text, level, reqId) {
+    const el = q("dashStream");
+    if (!el) return;
+    appendEvt(el, type, text, level, reqId, 200);
+  }
+  function fmtReqLine(o) {
+    const where = [o.source ? String(o.source).slice(0, 24) : "?", o.ip ? "IP " + String(o.ip) : ""].filter(Boolean).join(" · ");
+    return where + " · " + o.type.replace("request.", "") + (o.error ? "  (error: " + o.error + ")" : "");
   }
   q("btnClearLog").addEventListener("click", () => { q("log").textContent = ""; });
+
+  function cssv(name) {
+    return getComputedStyle(document.body).getPropertyValue(name).trim();
+  }
+  function drawSpark(canvasId, data, color) {
+    const cv = q(canvasId);
+    if (!cv) return;
+    const w = cv.clientWidth || 220;
+    const h = cv.clientHeight || 52;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = w * dpr;
+    cv.height = h * dpr;
+    const ctx = cv.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    const nums = data.filter((v) => v != null);
+    if (nums.length < 2) {
+      ctx.strokeStyle = "rgba(255,255,255,.10)";
+      ctx.beginPath();
+      ctx.moveTo(0, h / 2);
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+      return;
+    }
+    const mn = Math.min(...nums);
+    const mx = Math.max(...nums);
+    const span = mx - mn || 1;
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    let first = true;
+    data.forEach((v, i) => {
+      if (v == null) return;
+      const x = (i / (data.length - 1)) * w;
+      const y = h - 4 - ((v - mn) / span) * (h - 8);
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+  function renderMetrics(force) {
+    if (!force && q("view-metrics").classList.contains("hide")) return;
+    const last = (a) => { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return a[i]; return null; };
+    $s("mCpu", last(METRIC_HIST.cpu) != null ? last(METRIC_HIST.cpu).toFixed(1) + "%" : "—");
+    $s("mMem", last(METRIC_HIST.mem) != null ? last(METRIC_HIST.mem).toFixed(1) + "%" : "—");
+    $s("mTemp", last(METRIC_HIST.temp) != null ? last(METRIC_HIST.temp).toFixed(1) + "°C" : "—");
+    $s("mApm", last(METRIC_HIST.apm) != null ? String(Math.round(last(METRIC_HIST.apm))) : "—");
+    $s("mTps", last(METRIC_HIST.tps) != null ? last(METRIC_HIST.tps).toFixed(1) : "—");
+    drawSpark("spCpu", METRIC_HIST.cpu, cssv("--ac-sys"));
+    drawSpark("spMem", METRIC_HIST.mem, cssv("--ac-sys"));
+    drawSpark("spTemp", METRIC_HIST.temp, cssv("--ac-host"));
+    drawSpark("spApm", METRIC_HIST.apm, cssv("--ac-stream"));
+    drawSpark("spTps", METRIC_HIST.tps, cssv("--ac-model"));
+  }
+
+  function renderNeofetch() {
+    const h = hostState;
+    const s = sysState;
+    const st = lastStatus;
+    const m = modelMeta || {};
+    const row = (k, v, cls) => '<div class="neo-row"><span class="neo-k">' + k + '</span><span class="neo-v' + (cls ? " " + cls : "") + '">' + escapeHtml(v == null ? "—" : String(v)) + "</span></div>";
+    const archArt = [
+      "                   -`",
+      "                  .o+`",
+      "                 `ooo/",
+      "                `+oooo:",
+      "               `+oooooo:",
+      "               -+oooooo+:",
+      "             `/:-:++oooo+:",
+      "            `/++++/+++++++:",
+      "           `/++++++++++++++:",
+      "          `/+++ooooooooooooo/`",
+      "         ./ooosssso++osssssso+`",
+      "        .oossssso-````/ossssss+`",
+      "       -osssssso.      :ssssssso.",
+      "      :osssssss/        osssso+++.",
+      "     /ossssssss/        +ssssooo/-",
+      "   `/ossssso+/:-        -:/+osssso+-",
+      "  `+sso+:-`                 `.-/+oso:",
+      " `++:.                           `-/+/",
+      " .`                                 `/",
+    ].join("\n");
+    const debArt = [
+      "       _,met$$$$$gg.",
+      "    ,g$$$$$$$$$$$$$$$P.",
+      "  ,g$$P\"        \"\"\"Y$$\".",
+      " ,$$P'              `$$$.",
+      "',$$P       ,ggs.     `$$b:",
+      "`d$$'     ,$P\"'   .    $$$",
+      " $$P      d$'     ,    $$P",
+      " $$:      $$.   -    ,d$$'",
+      " $$;      Y$b._   _,d$P'",
+      " Y$$.    `.`\"Y$$$$P\"'",
+      " `$$b      \"-.__",
+      "  `Y$$",
+      "   `Y$$.",
+      "     `$$b.",
+      "       `Y$$b.",
+      "          `\"Y$b._",
+      "              `\"\"\"",
+    ].join("\n");
+    const hostLines = [
+      row("user@host", (h.hostname || "pi5") + "@rpi", "hot"),
+      row("os", h.hostOs || h.os || "Linux"),
+      row("kernel", h.kernel || "—"),
+      row("uptime", fmtUptime(h.uptimeSeconds)),
+      row("cpu", (h.cpuModel || "—") + " · " + (h.cpuCores != null ? h.cpuCores + " cores" : "—")),
+      row("memory", fmtBytes(h.memoryTotalBytes) + (s.memory != null ? " (" + s.memory.toFixed(0) + "% used)" : "")),
+      row("temperature", s.temperature != null ? s.temperature.toFixed(1) + "°C" : "—"),
+      row("model", h.model || "—"),
+      row("arch", h.arch || "—"),
+      row("local ip", h.localIp || "—"),
+    ].join("\n");
+    const boxLines = [
+      row("image", "node:22-trixie-slim (Debian trixie)"),
+      row("os", h.os || "—"),
+      row("gateway", st.gateway || "—"),
+      row("llama", st.llama || "—"),
+      row("model", [m.name, m.quantization].filter(Boolean).join(" ") || "—"),
+      row("size", fmtBytes(m.sizeBytes)),
+      row("loaded", st.modelLoaded ? "true" : "false"),
+    ].join("\n");
+    const mounts = (h.mounts || []).filter((mt) => mt.device.includes("nvme") || mt.mount === "/" || mt.mount.startsWith("/home"));
+    const disk = s.disk || {};
+    const diskLine = disk.usedPercent != null
+      ? 'model volume <b>/models</b> — ' + disk.usedPercent.toFixed(1) + "% used · " + fmtBytes(disk.availableBytes) + " free · NVMe mount"
+      : "model volume — no data";
+    const mountLine = mounts.length
+      ? mounts.map((mt) => escapeHtml(mt.device + " → " + mt.mount + " (" + mt.fs + ")")).join("<br>")
+      : "no NVMe/root/home mounts exposed yet";
+    const neo = '<div class="neo-wrap">' +
+      '<div class="neo-panel"><pre class="neo-ascii neo-arch">' + archArt + '</pre><div class="neo-info">' + hostLines + "</div></div>" +
+      '<div class="neo-panel"><pre class="neo-ascii neo-deb">' + debArt + '</pre><div class="neo-info">' + boxLines + "</div></div>" +
+    "</div>" +
+    '<div class="neo-nvme">' +
+      '<div class="nrow">' + diskLine + "</div>" +
+      '<div class="nrow">' + mountLine + "</div>" +
+      '<div class="nrow muted">warehouse sqlite DB planned on NVMe hardware</div>' +
+    "</div>";
+    document.querySelectorAll("[data-neo]").forEach((el) => { el.innerHTML = neo; });
+  }
+
+  async function loadHost() {
+    const hdrs = headers();
+    if (!hdrs) return;
+    try {
+      const h = (await (await fetch("/api/system/host", { headers: hdrs })).json());
+      Object.assign(hostState, h);
+      $s("hOs", h.os);
+      $s("hHostOs", h.hostOs || "—");
+      $s("hHost", h.hostname);
+      $s("hKernel", h.kernel);
+      $s("hArch", h.arch);
+      $s("hModel", h.model || "—");
+      $s("hCpu", h.cpuModel);
+      $s("hCores", String(h.cpuCores));
+      $s("hMem", fmtBytes(h.memoryTotalBytes));
+      $s("hUp", fmtUptime(h.uptimeSeconds));
+      $s("hIp", h.localIp || "—");
+      renderNeofetch();
+    } catch {}
+  }
 
   function connectWs(key) {
     if (!key) return;
@@ -794,13 +1659,21 @@
       const reqId = obj.type.startsWith("request.") ? obj.id : idFromLog(obj.message ?? JSON.stringify(obj));
       if (obj.type === "log") {
         appendLog("log", obj.message ?? "", obj.level, reqId);
+        appendStream("log", obj.message ?? "", obj.level, reqId);
         if (obj.message) parseLogLine(obj.message);
       } else {
         appendLog(obj.type, JSON.stringify(obj).slice(0, 400), undefined, reqId);
+        if (obj.type.startsWith("request.")) appendStream(obj.type, fmtReqLine(obj), undefined, reqId);
       }
       if (obj.type === "model.status") refresh();
-      if (obj.type === "llama.status" || obj.type === "gateway.status") refresh();
-      if (obj.type === "system.metrics") { renderSystem(obj); renderStatusbar({ gateway: q("sbGw")?.dataset?.gw || "online", llama: "online", model: q("sbModel")?.textContent, ...obj }); }
+      if (obj.type === "llama.status" || obj.type === "gateway.status") {
+        refresh();
+        if (modelRestartState.inFlight && obj.type === "llama.status") {
+          if (obj.status === "ready") finishRestarting(true, "Model ready");
+          else if (obj.status === "error" || obj.status === "stopped") finishRestarting(false, "llama is " + obj.status);
+        }
+      }
+      if (obj.type === "system.metrics") { renderSystem(obj); renderStatusbar({ gateway: q("sbGw")?.dataset?.gw || "online", llama: q("sbLl")?.textContent || "offline", model: q("sbModel")?.textContent, ...obj }); }
       handleRequestEvent(obj);
     };
     ws.onerror = () => { dot.className = "dot err"; };
@@ -810,6 +1683,7 @@
   keyInput.addEventListener("change", () => {
     localStorage.setItem("adminKey", keyInput.value);
     refresh();
+    loadLogHistory();
     connectWs(keyInput.value);
   });
   iKeyInput.addEventListener("change", () => {
@@ -822,9 +1696,11 @@
   applyTheme();
   tickClock();
   setInterval(tickClock, 1000);
-  setupScrollspy();
+  wirePipeNotes();
+  showView("dashboard");
   setInterval(refresh, 5000);
   refresh();
+  loadLogHistory();
   if (keyInput.value) connectWs(keyInput.value);
 </script>
 </body>

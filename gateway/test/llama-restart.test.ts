@@ -45,6 +45,15 @@ async function waitForReady(state: RuntimeState, timeoutMs = 10000): Promise<voi
   throw new Error("timed out waiting for llama to become ready");
 }
 
+async function waitForPidCount(pidlog: string, count: number, timeoutMs = 10000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (pidLogLines(pidlog).length >= count) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(`timed out waiting for ${count} stub pids in the pid log`);
+}
+
 afterEach(async () => {
   while (supervisors.length) {
     const s = supervisors.pop()!;
@@ -115,6 +124,7 @@ describe("llama supervisor restart", () => {
     expect(pidLogLines(pidlog).length).toBe(1);
 
     process.kill(Number(pidLogLines(pidlog)[0]), "SIGKILL");
+    await waitForPidCount(pidlog, 2, 15000);
     await waitForReady(state, 15000);
     expect(state.snapshot().llama).toBe("ready");
     expect(pidLogLines(pidlog).length).toBe(2);

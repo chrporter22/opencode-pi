@@ -92,6 +92,8 @@ export function startWsServer(opts: WsServerOptions): WsServer {
       method: record.method,
       path: record.path,
       model: record.model,
+      source: record.source,
+      ip: record.ip,
       status: record.status,
       durationMs: record.durationMs,
       promptTokens: record.promptTokens,

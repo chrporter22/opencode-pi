@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
-# Swap llama-server to a newer llama.cpp release.
+# Swap llama-server to a newer llama.cpp release AND (re)install the 4-bit
+# Qwen3-1.7B model.
 # The working binary is only ever replaced after the new one verifies — both on
 # the host AND inside the gateway's runtime image (Dockerfile base:
 # node:22-trixie-slim). A release built for a newer glibc than the container
 # provides is rejected and falls back to the default pin.
 #
-# Usage:  sudo ./scripts/update.sh
+# The model GGUF is downloaded only when the target quant is not already in place.
+# It is SHA-256 verified before an atomic swap (live file only replaced by a
+# verified file), and .env is updated to the 4-bit values.
+#
+# Usage:  sudo ./scripts/update.sh [--clean-old]
+#   --clean-old   remove the previous model rollback copy (.previous.gguf) after
+#                 the new model is verified in place.
+#
 # Env:    LLAMA_RELEASE       pin a specific llama.cpp tag (default: b9500). Set to
 #                             "latest" to resolve the newest stable tag via the
 #                             GitHub API (falls back to b9500 if it has no arm64
@@ -14,11 +22,32 @@
 #                             node:22-trixie-slim — keep in sync with the
 #                             Dockerfile base).
 #         LLAMA_DIR           override install root (default /opt/llama, for testing)
+#         MODEL_DIR           override model dir (default /opt/qwen-model, for testing)
+#         MODEL_URL           model file URL (default: Qwen3-1.7B Q4_K_M imatrix)
+#         MODEL_SHA256        expected SHA-256 of the model file (must match URL)
+#         MODEL_QUANT         quantization label written to .env (default Q4_K_M)
+#         MODEL_FILE          model filename (default current.gguf)
+#         ENV_FILE            .env path to update (default: <this repo>/.env)
 set -euo pipefail
 
 LLAMA_DIR="${LLAMA_DIR:-/opt/llama}"
+MODEL_DIR="${MODEL_DIR:-/opt/qwen-model}"
 LLAMA_RUNTIME_IMAGE="${LLAMA_RUNTIME_IMAGE:-node:22-trixie-slim}"
 DEFAULT_RELEASE="b9500"
+MODEL_URL="${MODEL_URL:-https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf}"
+MODEL_SHA256="${MODEL_SHA256:-72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb}"
+MODEL_QUANT="${MODEL_QUANT:-Q4_K_M}"
+MODEL_FILE="${MODEL_FILE:-current.gguf}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/../.env}"
+CLEAN_OLD=0
+for arg in "$@"; do
+  case "$arg" in
+    --clean-old) CLEAN_OLD=1 ;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "ERROR: unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
 
 latest_release() {
   local tmp tag
@@ -96,6 +125,83 @@ stage_and_swap() {
   return 1
 }
 
+# Install the model GGUF into $MODEL_DIR/$MODEL_FILE.
+# - Skips download if the file already exists AND its SHA-256 matches the target.
+# - Downloads to a staging path, verifies SHA-256, then atomically renames into
+#   place. The live file is never replaced by an unverified file.
+# - A previous model (e.g. old Q8_0) is preserved at $MODEL_DIR/.previous.gguf as
+#   a rollback copy unless --clean-old is given, which deletes it.
+# - Returns non-zero on any failure WITHOUT touching an existing verified model.
+provision_model() {
+  local target tmp had_previous
+  target="$MODEL_DIR/$MODEL_FILE"
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+
+  if [ -f "$target" ]; then
+    local current_sha
+    current_sha="$(sha256sum "$target" | awk '{print $1}')"
+    if [ "$current_sha" = "$MODEL_SHA256" ]; then
+      echo "Model already installed and verified ($MODEL_QUANT); skipping download"
+      return 0
+    fi
+    echo "Model present but not the target ($MODEL_QUANT); replacing"
+  fi
+
+  echo "Downloading model $MODEL_QUANT: $MODEL_URL"
+  if ! curl -fsSL "$MODEL_URL" -o "$tmp/source.gguf"; then
+    echo "ERROR: model download failed: $MODEL_URL" >&2
+    return 1
+  fi
+  if [ "$(sha256sum "$tmp/source.gguf" | awk '{print $1}')" != "$MODEL_SHA256" ]; then
+    echo "ERROR: model SHA-256 mismatch; not touching the installed model" >&2
+    return 1
+  fi
+  echo "Model SHA-256 verified"
+
+  if [ -f "$target" ]; then
+    had_previous=1
+    mkdir -p "$MODEL_DIR"
+    cp -a "$target" "$MODEL_DIR/.previous.gguf"
+    echo "Previous model preserved at $MODEL_DIR/.previous.gguf"
+  fi
+
+  if mv -f "$tmp/source.gguf" "$target"; then
+    echo "Installed model $MODEL_QUANT at $target ($(du -h "$target" | cut -f1))"
+    if [ "$CLEAN_OLD" = "1" ] && [ "${had_previous:-0}" = "1" ]; then
+      rm -f "$MODEL_DIR/.previous.gguf"
+      echo "--clean-old: removed previous model $MODEL_DIR/.previous.gguf"
+    fi
+    return 0
+  fi
+  echo "ERROR: failed to install model at $target" >&2
+  return 1
+}
+
+# Point .env at the installed 4-bit model so the gateway boots with it.
+# Rewrites MODEL_URL / MODEL_SHA256 / MODEL_QUANT; other values are untouched.
+set_env_model() {
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "WARNING: no .env at $ENV_FILE; not updating gateway config" >&2
+    return 0
+  fi
+  local tmp
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' RETURN
+  sed -E \
+    -e "s|^(MODEL_URL=).*|\1$MODEL_URL|" \
+    -e "s|^(MODEL_SHA256=).*|\1$MODEL_SHA256|" \
+    -e "s|^(MODEL_QUANT=).*|\1$MODEL_QUANT|" \
+    "$ENV_FILE" > "$tmp" || return 1
+  if grep -q "^MODEL_URL=" "$ENV_FILE"; then
+    cp -a "$tmp" "$ENV_FILE"
+  else
+    printf '\nMODEL_URL=%s\nMODEL_SHA256=%s\nMODEL_QUANT=%s\n' \
+      "$MODEL_URL" "$MODEL_SHA256" "$MODEL_QUANT" >> "$ENV_FILE"
+  fi
+  echo "Updated $ENV_FILE: MODEL_URL/MODEL_SHA256/MODEL_QUANT -> $MODEL_QUANT"
+}
+
 ARCH="$(uname -m)"
 case "$ARCH" in
   aarch64|arm64) ;;
@@ -143,3 +249,11 @@ if ! stage_and_swap "$RELEASE"; then
 fi
 
 echo "Updated: $("$LLAMA_DIR/llama-server" --version 2>&1 | head -n1)"
+
+echo "--- Model ---"
+if ! provision_model; then
+  echo "ERROR: model install failed; llama-server updated but model untouched" >&2
+  exit 1
+fi
+set_env_model
+echo "update complete"

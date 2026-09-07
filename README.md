@@ -127,7 +127,7 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | `ADMIN_API_KEY`       | Key for `/api/*` + `/ws`         | required      |
 | `LLAMA_HOST` / `PORT` | llama-server bind/port           | `127.0.0.1:8000` |
 | `LLAMA_BIN`           | llama-server path in container   | `/opt/llama/llama-server` |
-| `LLAMA_CONTEXT_SIZE`  | Context window                   | `8192`        |
+| `LLAMA_CONTEXT_SIZE`  | Context window (Qwen3-1.7B max 32768) | `8192`        |
 | `LLAMA_*`             | threads / batch / parallel / extra args | (unset) |
 | `MODEL_NAME`          | Model display name               | `Qwen3-1.7B`   |
 | `MODEL_URL`           | GGUF download URL                | required      |
@@ -337,7 +337,7 @@ Create `~/.config/opencode/opencode.json` (on the Arch laptop):
 },
 "models": {
 "Qwen3-1.7B": {
-"name": "Qwen3-1.7B Q8_0",
+"name": "Qwen3-1.7B Q4_K_M",
 "limit": {
 "context": 8192,
 "output": 2048
@@ -355,7 +355,9 @@ Create `~/.config/opencode/opencode.json` (on the Arch laptop):
   as a fallback pick it in the TUI with `/models`.
 - `apiKey` is the `INFERENCE_API_KEY`; opencode sends it as `Authorization: Bearer`, which
   the gateway accepts (`x-api-key` works too).
-- `chmod 600` the file. Expect ~3 tok/s at ctx 8192 (1.7B Q8_0 on the Pi 5, 4 threads).
+- `chmod 600` the file. Expect a few tok/s (1.7B Q4_K_M on the Pi 5, 4 threads); the
+  actual speed at a given request drops as the context fills; a full 8192-token
+  context keeps the KV cache and prompt-eval time modest on the Pi's 4 cores.
 
 ### 6. Sanity check from the laptop (before running opencode)
 
@@ -375,12 +377,34 @@ blocking TCP 8080 for the LAN (allow it on your subnet only).
 
 ### 7. Swap the model to Q4_K_M (4-bit) for faster inference
 
-The control plane is quant-agnostic, so the swap is a `.env` change plus the standard
-model update — no rebuild, no code change, `/opt/llama` untouched. The official Qwen
-repo only ships Q8_0, so the 4-bit file comes from bartowski's imatrix mirror
+Two equivalent paths — the host scripts (recommended, below) and the gateway API
+(below). The model is data, not code, so nothing in `/opt/llama` or the image
+changes. The control plane is quant-agnostic. The official Qwen repo only ships
+Q8_0, so the 4-bit file comes from bartowski's imatrix mirror
 (`Qwen_Qwen3-1.7B-Q4_K_M.gguf`, ~1.28 GB, SHA-256
 `72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb`). Full runbook:
 PRD §10.7.
+
+**Script path (recommended):** `scripts/install.sh` (and `scripts/update.sh`) now
+provision the 4-bit model — download → SHA-256 verify → atomic swap into
+`$MODEL_DIR/current.gguf` — and point `.env` at the Q4_K_M values:
+
+```bash
+sudo ./scripts/install.sh                # installs llama + Q4_K_M model
+sudo ./scripts/install.sh --clean-old    # also delete the preserved old (Q8_0) model
+docker compose up -d                     # recreate gateway with the new env
+```
+
+The previous model is preserved as `$MODEL_DIR/.previous.gguf` for rollback; remove
+it deliberately with `--clean-old` or later with
+`sudo ./scripts/cleanup.sh --previous-model`.
+
+Runtime: after `docker compose up -d`, check the Control Center or
+`GET /api/model` for `"quantization":"Q4_K_M"` and confirm tok/s (expect ~1.3–1.6×
+the ~8.7 tok/s Q8_0 baseline, since decode is memory-bandwidth-bound). A streaming
+completion still works and the model ID stays `Qwen3-1.7B`.
+
+**Gateway API path:**
 
 1. Back up the current `MODEL_URL`, `MODEL_SHA256`, `MODEL_QUANT` from `.env`.
 2. Set them to the Q4_K_M values:
