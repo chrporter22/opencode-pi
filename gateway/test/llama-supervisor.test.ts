@@ -12,8 +12,8 @@ describe("buildLlamaArgs", () => {
       "--model", "/models/current.gguf",
       "--host", "127.0.0.1",
       "--port", "8000",
-      "--ctx-size", "8192",
-      "--alias", "Qwen3-1.7B",
+      "--ctx-size", "32768",
+      "--alias", "Qwen2.5-Coder-3B-Instruct",
     ]);
   });
 

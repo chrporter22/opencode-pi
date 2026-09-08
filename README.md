@@ -1,10 +1,10 @@
 # opencode-pi
 
-A self-hosted, LAN-only local AI control center for a Raspberry Pi 5. Runs a quantized Qwen3-1.7B (Q8_0) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on your local network, and ships a clean, single-file browser control center for monitoring and operating the system.
+A self-hosted, LAN-only local AI control center for a Raspberry Pi 5. Runs a quantized Qwen2.5-Coder-3B-Instruct (Q4_K_M) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on your local network, and ships a clean, single-file browser control center for monitoring and operating the system.
 
 ## What it does
 
-- **Runs Qwen3-1.7B locally** on a Raspberry Pi 5 (Q8_0 quant).
+- **Runs Qwen2.5-Coder-3B-Instruct locally** on a Raspberry Pi 5 (Q4_K_M quant).
 - **Exposes one OpenAI-compatible endpoint** to OpenCode over the LAN: `http://<pi-ip>:8080/v1`.
 - **Keeps the model out of the image.** The GGUF and the `llama-server` binary are both external — mounted in, never baked in.
 - **Provisions the model automatically.** On first start, if `current.gguf` is missing it is downloaded, verified, and atomically installed.
@@ -127,9 +127,9 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | `ADMIN_API_KEY`       | Key for `/api/*` + `/ws`         | required      |
 | `LLAMA_HOST` / `PORT` | llama-server bind/port           | `127.0.0.1:8000` |
 | `LLAMA_BIN`           | llama-server path in container   | `/opt/llama/llama-server` |
-| `LLAMA_CONTEXT_SIZE`  | Context window (Qwen3-1.7B max 32768) | `8192`        |
+| `LLAMA_CONTEXT_SIZE`  | Context window (Qwen2.5-Coder-3B-Instruct max 32768) | `32768`        |
 | `LLAMA_*`             | threads / batch / parallel / extra args | (unset) |
-| `MODEL_NAME`          | Model display name               | `Qwen3-1.7B`   |
+| `MODEL_NAME`          | Model display name               | `Qwen2.5-Coder-3B-Instruct`   |
 | `MODEL_URL`           | GGUF download URL                | required      |
 | `MODEL_FILE`          | Active filename in `/models`     | `current.gguf` |
 | `MODEL_SHA256`        | Optional download checksum       | (unset)       |
@@ -144,7 +144,7 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 | `ANALYTICS_CONTEXT_WINDOWS` | Context windows fed to model   | `12`        |
 | `ANALYTICS_EWMA_DECAY`| EWMA reference decay per window  | `0.1`       |
 | `ANALYTICS_ML_DIR`    | Host ML artifacts dir            | `/opt/qwen-ml` |
-| `ANALYTICS_DB_FILE`   | SQLite store file (external mount) | `/data/analytics.db` |
+| `ANALYTICS_DB_FILE`   | SQLite store file (host, survives `down -v`) | `/opt/qwen-ml/analytics.db` |
 | `ANALYTICS_PCA_COMPONENTS` | Max PCA components retained  | `6`            |
 | `ANALYTICS_PCA_WATCH_Z` / `ANALYTICS_PCA_HIGH_Z` | Top-3-PC σ thresholds (watch / high) | `1.0` / `1.5` |
 | `ANALYTICS_EMBED_ENABLED` / `ANALYTICS_EMBED_MODEL` | Lookalike embedding stores / embedder | `true` / (unset) |
@@ -277,10 +277,10 @@ Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD
 - [x] Streaming inference pass-through (`/v1/*` SSE, credentials stripped)
 - [x] Host `scripts/` (install, update, cleanup llama runtime)
 - [x] Dockerfile + docker-compose (dev + test services)
-- [x] Model first-run provisioning (1.83 GB Q8_0 downloaded, SHA-256 verified, atomically installed)
+- [x] Model first-run provisioning (Qwen2.5-Coder-3B-Instruct Q4_K_M, SHA-256 verified, atomically installed)
 - [x] llama-server serves the model under the alias `--alias ${MODEL_NAME}`
 - [x] End-to-end acceptance: streaming completion through `/v1` (llama ready, `modelLoaded`,
-  `/v1/models` id `Qwen3-1.7B`, SSE tokens flowing, tok/s surfaced in `/api/system`)
+  `/v1/models` id `Qwen2.5-Coder-3B-Instruct`, SSE tokens flowing, tok/s surfaced in `/api/system`)
 - [x] Control Center v2: streams table (`GET /api/requests` + `request.*` WS), Playground,
   Viridis theme toggle, JetBrains Mono Nerd Font, no-overlap layout (PRD §6.12, §9.4–9.7)
 - [ ] Analytics & risk layer: Python microservice (analytics + analytics-train), webhook
@@ -290,7 +290,7 @@ Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD
 
 ## Getting started from your laptop
 
-The gateway serves the control center and the Qwen3-1.7B model on the Pi's LAN address.
+The gateway serves the control center and the Qwen2.5-Coder-3B-Instruct model on the Pi's LAN address.
 
 ### 1. Provision on the Pi
 
@@ -325,81 +325,97 @@ from `gateway/.env` (or repo `.env`).
 ### 4. Access the control center
 
 Browser → `http://<pi-ip>:8080` → enter the `ADMIN_API_KEY`. The model panel should show
-`Qwen3-1.7B` with `ready`/`loaded` and live tok/s; the download progress bar only appears
+`Qwen2.5-Coder-3B-Instruct` with `ready`/`loaded` and live tok/s; the download progress bar only appears
 during first-run provisioning.
 
 ### 5. Point opencode at the Pi
 
-Create `~/.config/opencode/opencode.json` (on the Arch laptop):
+Create `~/.config/opencode/opencode.json` (on the Arch laptop) — a **sample**; replace the
+placeholder values (no secrets or machine-specific addresses are baked into the README):
 
 ```jsonc
 {
-"$schema": "https://opencode.ai/config.json",
-"provider": {
-"opencode-pi": {
-"npm": "@ai-sdk/openai-compatible",
-"name": "opencode-pi (LAN)",
-"options": {
-"baseURL": "http://<pi-ip>:8080/v1",
-"apiKey": "<INFERENCE_API_KEY>"
-},
-"models": {
-"Qwen3-1.7B": {
-"name": "Qwen3-1.7B Q4_K_M",
-"limit": {
-"context": 8192,
-"output": 2048
-}
-}
-}
-}
-},
-"model": "opencode-pi/Qwen3-1.7B"
+  "$schema": "https://opencode.ai/config.json",
+
+  "provider": {
+    "opencode-pi": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "opencode-pi (LAN)",
+      "options": {
+        "baseURL": "http://<pi-ip>:8080/v1",
+        "apiKey": "<INFERENCE_API_KEY>"
+      },
+      "models": {
+        "Qwen2.5-Coder-3B-Instruct": {
+          "name": "Qwen2.5-Coder-3B-Instruct Q4_K_M",
+          "limit": { "context": 32768, "output": 32768 }
+        }
+      }
+    },
+
+    "google": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Google Gemini",
+      "options": {
+        "baseURL": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "apiKey": "{env:GEMINI_API_KEY}"
+      },
+      "models": {
+        "gemini-3.6-flash": {
+          "name": "Gemini 3.6 Flash",
+          "limit": { "context": 1048576, "output": 8192 }
+        }
+      }
+    }
+  },
+
+  "model": "google/gemini-3.6-flash"
 }
 ```
 
 - Each model ID must match what `GET /v1/models` returns — the gateway aliases the model
-  to `Qwen3-1.7B`, so that is the ID to use. `"model"` at the top makes it the default;
-  as a fallback pick it in the TUI with `/models`.
+  to `Qwen2.5-Coder-3B-Instruct`, so that is the ID to use. `"model"` at the top makes Google
+  Gemini the default; as a fallback pick a model in the TUI with `/models`.
 - `apiKey` is the `INFERENCE_API_KEY`; opencode sends it as `Authorization: Bearer`, which
   the gateway accepts (`x-api-key` works too).
-- `chmod 600` the file. Expect a few tok/s (1.7B Q4_K_M on the Pi 5, 4 threads); the
-  actual speed at a given request drops as the context fills; a full 8192-token
+- `chmod 600` the file. Expect a few tok/s (3B Q4_K_M on the Pi 5, 4 threads); the
+  actual speed at a given request drops as the context fills; a full 32768-token
   context keeps the KV cache and prompt-eval time modest on the Pi's 4 cores.
 
 ### 6. Sanity check from the laptop (before running opencode)
 
 ```bash
 curl -s http://<pi-ip>:8080/v1/models -H "Authorization: Bearer <INFERENCE_API_KEY>"
-# data[0].id should be "Qwen3-1.7B"
+# data[0].id should be "Qwen2.5-Coder-3B-Instruct"
 
 curl -N -s http://<pi-ip>:8080/v1/chat/completions \
   -H "Authorization: Bearer <INFERENCE_API_KEY>" \
   -H "Content-Type: application/json" \
-  -d '{"model":"Qwen3-1.7B","stream":true,"messages":[{"role":"user","content":"Hi"}]}'
+  -d '{"model":"Qwen2.5-Coder-3B-Instruct","stream":true,"messages":[{"role":"user","content":"Hi"}]}'
 # SSE chunks should stream back
 ```
 
 If either hangs or fails: laptop and Pi not on the same subnet, or the Pi firewall is
 blocking TCP 8080 for the LAN (allow it on your subnet only).
 
-### 7. Swap the model to Q4_K_M (4-bit) for faster inference
+### 7. Swap the model
 
-Two equivalent paths — the host scripts (recommended, below) and the gateway API
-(below). The model is data, not code, so nothing in `/opt/llama` or the image
-changes. The control plane is quant-agnostic. The official Qwen repo only ships
-Q8_0, so the 4-bit file comes from bartowski's imatrix mirror
-(`Qwen_Qwen3-1.7B-Q4_K_M.gguf`, ~1.28 GB, SHA-256
-`72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb`). Full runbook:
-PRD §10.7.
+The loaded model is configuration, not code — swapping it never touches `/opt/llama`
+or the image. Point `.env` (and/or the `install.sh`/`update.sh` defaults) at the new
+GGUF, then run the atomic update; a failed swap leaves `current.gguf` untouched.
 
-**Script path (recommended):** `scripts/install.sh` (and `scripts/update.sh`) now
-provision the 4-bit model — download → SHA-256 verify → atomic swap into
-`$MODEL_DIR/current.gguf` — and point `.env` at the Q4_K_M values:
+The current default is **Qwen2.5-Coder-3B-Instruct** Q4_K_M from the official
+`Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` repo (`qwen2.5-coder-3b-instruct-q4_k_m.gguf`,
+~2.10 GB, SHA-256 `724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7`).
+Full runbook: PRD §10.7.
+
+**Script path (recommended):** `scripts/install.sh` (and `scripts/update.sh`) provision
+the model — download → SHA-256 verify → atomic swap into `$MODEL_DIR/current.gguf` —
+and point `.env` at the target values:
 
 ```bash
-sudo ./scripts/install.sh                # installs llama + Q4_K_M model
-sudo ./scripts/install.sh --clean-old    # also delete the preserved old (Q8_0) model
+sudo ./scripts/install.sh                # installs llama + the default (Q4_K_M) model
+sudo ./scripts/install.sh --clean-old    # also delete the preserved previous model
 docker compose up -d                     # recreate gateway with the new env
 ```
 
@@ -408,18 +424,18 @@ it deliberately with `--clean-old` or later with
 `sudo ./scripts/cleanup.sh --previous-model`.
 
 Runtime: after `docker compose up -d`, check the Control Center or
-`GET /api/model` for `"quantization":"Q4_K_M"` and confirm tok/s (expect ~1.3–1.6×
-the ~8.7 tok/s Q8_0 baseline, since decode is memory-bandwidth-bound). A streaming
-completion still works and the model ID stays `Qwen3-1.7B`.
+`GET /api/model` for `"quantization":"Q4_K_M"` and confirm tok/s lands in the UI.
 
 **Gateway API path:**
 
-1. Back up the current `MODEL_URL`, `MODEL_SHA256`, `MODEL_QUANT` from `.env`.
-2. Set them to the Q4_K_M values:
+1. Back up the current `MODEL_NAME`, `MODEL_URL`, `MODEL_SHA256`, `MODEL_QUANT` from `.env`.
+2. Set them to the new model's values (e.g. the Qwen2.5-Coder target above), or to any
+   other GGUF URL.
 
    ```bash
-   MODEL_URL=https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf
-   MODEL_SHA256=72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb
+   MODEL_NAME=Qwen2.5-Coder-3B-Instruct
+   MODEL_URL=https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf
+   MODEL_SHA256=724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7
    MODEL_QUANT=Q4_K_M
    ```
 
@@ -431,14 +447,14 @@ completion still works and the model ID stays `Qwen3-1.7B`.
    curl -s -X POST http://127.0.0.1:8080/api/model/update -H "x-api-key: <ADMIN_API_KEY>"
    ```
 
-5. Verify: `/api/model` shows `"quantization":"Q4_K_M"`; `/v1/models` id stays
-   `Qwen3-1.7B`.
+5. Verify: `/api/model` shows the new `"name"` / `"quantization"`; `/v1/models` id
+   matches `MODEL_NAME`.
 6. Rollback: restore the saved values in `.env`, `docker compose up -d`, run the update
    again.
 
-Expect roughly 1.3–1.6× more tok/s (memory-bandwidth-bound decode; ~1.28 GB vs
-~1.83 GB). Your laptop opencode config keeps working unchanged — the model ID is the
-same.
+Note: because the model ID (the `--alias`, exposed by `/v1/models`) changed to
+`Qwen2.5-Coder-3B-Instruct`, update the laptop opencode config (`opencode.json`, §5) to
+the new model ID — unlike the previous quant-only swap, the ID is different now.
 
 ### Known behaviors
 

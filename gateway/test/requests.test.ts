@@ -108,7 +108,7 @@ describe("request tracking via the v1 proxy", () => {
     const res = await request(app)
       .post("/v1/chat/completions")
       .set("content-type", "application/json")
-      .send({ model: "Qwen3-1.7B", stream: true, messages: [{ role: "user", content: "hi" }] });
+      .send({ model: "Qwen2.5-Coder-3B-Instruct", stream: true, messages: [{ role: "user", content: "hi" }] });
 
     expect(res.status).toBe(200);
     const rec = tracker.snapshot().find((r) => r.status === "completed");
@@ -126,7 +126,7 @@ describe("request tracking via the v1 proxy", () => {
     const res = await request(app)
       .post("/v1/chat/completions")
       .set("content-type", "application/json")
-      .send({ model: "Qwen3-1.7B", messages: [{ role: "user", content: "hi" }] });
+      .send({ model: "Qwen2.5-Coder-3B-Instruct", messages: [{ role: "user", content: "hi" }] });
 
     expect(res.status).toBe(200);
     const rec = tracker.snapshot().find((r) => r.status === "completed");
@@ -164,7 +164,7 @@ describe("request tracking via the v1 proxy", () => {
     await request(app)
       .post("/v1/chat/completions")
       .set("content-type", "application/json")
-      .send({ model: "Qwen3-1.7B", stream: true, messages: [{ role: "user", content: "hi" }] });
+      .send({ model: "Qwen2.5-Coder-3B-Instruct", stream: true, messages: [{ role: "user", content: "hi" }] });
 
     const started = seen.find((s) => s.status === "started");
     const completed = seen.find((s) => s.status === "completed");
@@ -175,7 +175,7 @@ describe("request tracking via the v1 proxy", () => {
 
   it("merges llama task timings when the response carries no usage", async () => {
     const tracker = createRequestTracker();
-    const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen3-1.7B" };
+    const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen2.5-Coder-3B-Instruct" };
     tracker.start(ctx);
     const id = tracker.snapshot()[0].id;
     tracker.applyTaskTiming({ promptTokens: 1, completionTokens: 8, totalTokens: 9 });
@@ -192,7 +192,7 @@ describe("request tracking via the v1 proxy", () => {
 
   it("prefers response usage over llama task timings", () => {
     const tracker = createRequestTracker();
-    const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen3-1.7B" };
+    const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen2.5-Coder-3B-Instruct" };
     tracker.start(ctx);
     const id = tracker.snapshot()[0].id;
     tracker.applyTaskTiming({ promptTokens: 1, completionTokens: 8, totalTokens: 9 });
@@ -206,7 +206,7 @@ describe("request tracking via the v1 proxy", () => {
 
   it("back-fills tokens into a completed record when timing arrives after completion", async () => {
     const tracker = createRequestTracker();
-    const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen3-1.7B" };
+    const ctx = { method: "POST", path: "/v1/chat/completions", model: "Qwen2.5-Coder-3B-Instruct" };
     tracker.start(ctx);
     const id = tracker.snapshot()[0].id;
     await new Promise((r) => setTimeout(r, 15));
@@ -257,7 +257,7 @@ describe("request tracking via the v1 proxy", () => {
             });
           }
         );
-        out.write(JSON.stringify({ model: "Qwen3-1.7B", stream: true, messages: [{ role: "user", content: "hi" }] }));
+        out.write(JSON.stringify({ model: "Qwen2.5-Coder-3B-Instruct", stream: true, messages: [{ role: "user", content: "hi" }] }));
         out.end();
       });
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Swap llama-server to a newer llama.cpp release AND (re)install the 4-bit
-# Qwen3-1.7B model.
+# Qwen2.5-Coder-3B-Instruct model.
 # The working binary is only ever replaced after the new one verifies — both on
 # the host AND inside the gateway's runtime image (Dockerfile base:
 # node:22-trixie-slim). A release built for a newer glibc than the container
@@ -23,7 +23,7 @@
 #                             Dockerfile base).
 #         LLAMA_DIR           override install root (default /opt/llama, for testing)
 #         MODEL_DIR           override model dir (default /opt/qwen-model, for testing)
-#         MODEL_URL           model file URL (default: Qwen3-1.7B Q4_K_M imatrix)
+#         MODEL_URL           model file URL (default: Qwen2.5-Coder-3B-Instruct Q4_K_M)
 #         MODEL_SHA256        expected SHA-256 of the model file (must match URL)
 #         MODEL_QUANT         quantization label written to .env (default Q4_K_M)
 #         MODEL_FILE          model filename (default current.gguf)
@@ -34,8 +34,8 @@ LLAMA_DIR="${LLAMA_DIR:-/opt/llama}"
 MODEL_DIR="${MODEL_DIR:-/opt/qwen-model}"
 LLAMA_RUNTIME_IMAGE="${LLAMA_RUNTIME_IMAGE:-node:22-trixie-slim}"
 DEFAULT_RELEASE="b9500"
-MODEL_URL="${MODEL_URL:-https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf}"
-MODEL_SHA256="${MODEL_SHA256:-72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb}"
+MODEL_URL="${MODEL_URL:-https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf}"
+MODEL_SHA256="${MODEL_SHA256:-724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7}"
 MODEL_QUANT="${MODEL_QUANT:-Q4_K_M}"
 MODEL_FILE="${MODEL_FILE:-current.gguf}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>opencode-pi — Control Center</title>
+<title>Qwen2.5-Coder-3B-Instruct · opencode-pi Control Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -47,8 +47,15 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
-    background: var(--bg); color: var(--fg); font-size: 14px; min-height: 100vh;
+    background:
+      radial-gradient(1100px 750px at 12% -6%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 62%),
+      radial-gradient(950px 700px at 106% 16%, color-mix(in srgb, var(--ac-model) 10%, transparent), transparent 58%),
+      radial-gradient(900px 650px at 82% 112%, color-mix(in srgb, var(--ac-wh) 7%, transparent), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--fg); font-size: 14px; min-height: 100vh;
     padding-bottom: 76px; color-scheme: dark;
+    overflow-x: hidden;
   }
   .shell { display: flex; min-height: 100vh; }
   .sidebar {
@@ -80,8 +87,8 @@
     color: var(--faint); padding: 12px 10px 4px;
   }
   .nav-label { flex: 1; }
-  .content { flex: 1; margin-left: 220px; min-width: 0; padding: 20px 24px 8px; }
-  .view { display: block; }
+  .content { flex: 1; margin-left: 220px; min-width: 0; padding: 20px 24px 8px; max-width: 100%; }
+  .view { display: block; min-width: 0; width: 100%; }
   .view.hide { display: none; }
   .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
   .topbar h1 { font-size: 18px; font-weight: 600; }
@@ -101,7 +108,7 @@
   }
   .card {
     background: var(--card); border: 1px solid var(--border); border-radius: 4px;
-    padding: 16px 16px 14px; min-width: 0; border-top: 3px solid var(--border);
+    padding: 16px 16px 14px; min-width: 0; max-width: 100%; border-top: 3px solid var(--border);
     scroll-margin-top: 12px; transition: box-shadow .18s, transform .18s;
   }
   .card:hover { box-shadow: 0 6px 22px -8px var(--glow); transform: translateY(-1px); }
@@ -121,9 +128,9 @@
   #dash-analytics { order: 3; }
   #pipe-streams { order: 4; }
   #dash-stream-card { order: 5; }
-  .dashboard { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  .dashboard { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
   @media (min-width: 1024px) {
-    .dashboard { grid-template-columns: repeat(3, 1fr); }
+    .dashboard { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   @media (min-width: 1024px) { .content { max-width: 1280px; } }
   .table-scroll { overflow-x: auto; }
@@ -211,6 +218,7 @@
   .neo-ascii {
     font-family: var(--mono); font-size: 9.5px; line-height: 1.1; margin: 0;
     white-space: pre; color: var(--faint); user-select: none;
+    max-width: 100%; overflow-x: auto;
   }
   .neo-ascii.neo-arch { color: #1793d1; }
   .neo-ascii.neo-deb { color: #b0301a; }
@@ -262,6 +270,7 @@
   .log .tag.warn { color: var(--viridis-4); }
   .log .tag.info { color: var(--accent); }
   .log .tag.sys { color: var(--faint); }
+  .log .tag.ml { color: var(--viridis-2); }
   .log .tag.dim { color: var(--faint); }
   .log .msg { color: var(--fg); }
   table.streams .errDetail td { color: var(--err); border-bottom: none; }
@@ -284,6 +293,7 @@
   #syncList { margin-top: 2px; }
   #dash-sync .sync-item { padding: 1px 0; font-size: 11.5px; }
   .filter-bar { display: flex; gap: 6px; margin: 8px 0; }
+  .filter-bar .f-sep { align-self: center; width: 1px; height: 14px; background: var(--border); margin: 0 2px; }
   .filter-bar button {
     margin: 0; padding: 3px 12px; font-size: 12px; border-radius: 3px;
     background: var(--chip-bg); color: var(--dim); border: 1px solid var(--border);
@@ -342,6 +352,119 @@
   .feat-grid .fv { color:var(--fg); min-width:54px; text-align:right; }
   .feat-grid input { width:auto; accent-color:var(--accent); }
   #dash-analytics .actions button { padding:5px 10px; font-size:11.5px; }
+  .mono { font-family: var(--mono); }
+  /* ------------------------------------------------------------------ */
+  /* compact row-level mode                                             */
+  body.compact .dashboard { gap: 4px; }
+  body.compact .card { padding: 6px 10px 4px; border-radius: 2px; border-top-width: 2px; }
+  body.compact .card:hover { box-shadow: none; transform: none; }
+  body.compact .card h2 { font-size: 10.5px; margin-bottom: 5px; letter-spacing: .5px; }
+  body.compact .row { padding: 1px 0; font-size: 12.5px; }
+  body.compact .card .mstat { font-size: 15px; }
+  body.compact .neo-ascii, body.compact .msg.hint { display: none; }
+  body.compact .spark-grid { gap: 6px; }
+  body.compact #dashStream { max-height: 96px; }
+  body.compact .topbar { margin-bottom: 10px; }
+  body.compact h1 { font-size: 15px; }
+  body.compact .statusbar { padding: 3px 12px; gap: 10px; }
+  body.compact table.stats td, body.compact table.streams td, body.compact table.streams th { padding: 2px 6px; }
+  /* row-level compact: tighten every card to a dense ops board */
+  body.compact h2.sub-title { margin-bottom: 4px; }
+  body.compact .card { padding: 3px 8px 2px; }
+  body.compact .card h2 { font-size: 9.5px; margin-bottom: 2px; }
+  body.compact .row { padding: 0; font-size: 12px; line-height: 1.45; }
+  body.compact .row.actions { flex-wrap: wrap; gap: 2px; }
+  body.compact .card .mstat { font-size: 14px; }
+  body.compact .card .rows { font-size: 11.5px; }
+  body.compact .chip { font-size: 9.5px; padding: 0 5px; }
+  body.compact table.stats td, body.compact table.streams td, body.compact table.streams th { padding: 1px 5px; font-size: 12px; }
+  body.compact table.doc td, body.compact table.doc th { padding: 1px 5px; font-size: 12px; }
+  body.compact .spark-item { padding: 4px 6px; }
+  body.compact .spark-item h3 { font-size: 10px; margin-bottom: 0; }
+  body.compact .spark-item canvas { height: 32px; margin-top: 2px; }
+  body.compact .usage-bar { height: 5px; margin: 1px 0 5px; }
+  body.compact .usage-bar + span, body.compact .usage-label { font-size: 11px; }
+  body.compact .grid-2, body.compact .half { gap: 4px; }
+  body.compact input, body.compact input[type=number] { padding: 2px 6px; font-size: 12px; min-height: 0; }
+  body.compact button { padding: 3px 8px; font-size: 12px; }
+  body.compact .filter-bar { margin: 4px 0 2px; }
+  body.compact #logArea { font-size: 11.5px; }
+  body.compact .nexus-board { gap: 3px; }
+  body.compact .log-badge { font-size: 9px; padding: 0 4px; }
+  body.compact .st span { font-size: 12px; }
+  body.compact .sync-item { padding: 1px 4px; font-size: 12px; }
+  body.compact #ml-3d canvas { height: auto; }
+  body.compact .pca-stage { max-width: 340px; }
+  body.compact .ml-charts-box canvas { height: 150px; }
+  body.compact .toolbar .btn { padding: 3px 8px; }
+  body.compact .row.actions button { white-space: nowrap; margin: 1px 0; }
+  body.compact .filter-bar { flex-wrap: wrap; }
+  body.compact .filter-bar button { flex: 0 0 auto; padding: 2px 8px; }
+  body.compact .topbar .row.actions { flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+  body.compact input#key, body.compact input#iKey { width: 170px; }
+  body.compact .card h2 { overflow: visible; }
+  body.compact .mini-sync { flex: 0 0 auto; }
+  body.compact .tag.tag-ml { display: inline-block; }
+  body.compact #ml-box canvas { height: 190px; }
+  body.compact #pipeStream { max-height: 150px; }
+  body.compact .mini { max-height: 72px; font-size: 11px; }
+  body.compact .row > span:last-child { white-space: normal; word-break: break-word; }
+  body.compact #anIn, body.compact #anPca, body.compact #anSys, body.compact #anNn,
+  body.compact #mlTsLabel, body.compact #mlBoxLabel, body.compact #anTrials,
+  body.compact .pca-legend, body.compact .pipe-note, body.compact #mlTooltip {
+    font-size: 10.5px !important; line-height: 1.5;
+  }
+  body.compact .pca-legend { flex-wrap: wrap; row-gap: 2px; }
+  body.compact .pca-legend .pca-scale { width: 90px; }
+  body.compact .chip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.compact .switch-label, body.compact .cfgbox summary, body.compact .cfgbox label,
+  body.compact .cfgbox .doc-note { font-size: 11px; }
+  body.compact .doc-note { font-size: 10.5px; }
+  /* ------------------------------------------------------------------ */
+  /* ML analytics page                                                  */
+  .mini-sync {
+    margin: 0; margin-left: auto; padding: 2px 8px; font-size: 11px;
+    background: var(--chip-bg); color: var(--dim); border: 1px solid var(--border);
+  }
+  .card h2 .mini-sync { float: right; }
+  canvas.ml-canvas { width: 100%; display: block; border-radius: 6px; background: var(--input); }
+  #ml-3d .pca-stage { width: 100%; max-width: 440px; margin: 0 auto; }
+  #ml-3d canvas { cursor: crosshair; aspect-ratio: 1 / 1; width: 100%; height: auto; }
+  #ml-box canvas { height: 220px; }
+  #ml-spark .spark-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  @media (max-width: 860px) { #ml-spark .spark-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+  .pipe-flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 4px 0; margin-top: 8px; font-size: 11.5px; }
+  .pipe-step {
+    background: var(--chip-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 9px; font-family: var(--mono); line-height: 1.35;
+  }
+  .pipe-step b { color: var(--accent); display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 1px; }
+  .pipe-arrow { align-self: center; color: var(--faint); padding: 0 4px; font-size: 13px; }
+  .pipe-note { color: var(--faint); font-size: 11.5px; margin-top: 8px; line-height: 1.5; }
+  .pipe-note a { color: var(--accent); }
+  .pipe-feed { border-bottom: 1px dashed var(--border); padding: 8px 0; }
+  .pipe-feed .pipe-note { margin-top: 2px; font-size: 11px; }
+  #ml-cfg .cfg-grid label.wide:first-child { font-size: 12px; color: var(--fg); }
+  #ml-cfg .cfg-grid label.wide:first-child input[type=number] { width: 96px; }
+  .ml-split { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  @media (max-width: 860px) { .ml-split { grid-template-columns: 1fr; } }
+  .pca-legend { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--dim); font-family: var(--mono); }
+  .pca-legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+  .pca-scale { width: 140px; height: 7px; border-radius: 3px; background: linear-gradient(90deg, #440154, #3b528b, #21918c, #5ec962, #fde725); }
+  #mlMeta pre { max-height: 140px; }
+  .doc-note { font-size: 11px; color: var(--faint); margin-top: 4px; }
+  table.doc td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  /* ------------------------------------------------------------------ */
+  /* per-page statusbar segments                                        */
+  .st[data-sb] { display: none; }
+  body[data-view="connections"] .st[data-sb="connections"],
+  body[data-view="pipelines"] .st[data-sb="pipelines"],
+  body[data-view="metrics"] .st[data-sb="metrics"],
+  body[data-view="logs"] .st[data-sb="logs"],
+  body[data-view="dashboard"] .st[data-sb="system"],
+  body[data-view="metrics"] .st[data-sb="system"],
+  body[data-view="ml-analytics"] .st[data-sb="ml"],
+  body[data-view="warehouse"] .st[data-sb="warehouse"] { display: inline-flex; }
 </style>
 </head>
 <body>
@@ -357,6 +480,7 @@
       <a href="#" data-view="logs"><span class="marker" style="background:var(--ac-evt)"></span><span class="nav-label">Logs</span></a>
       <a href="#" data-view="metrics"><span class="marker" style="background:var(--ac-stream)"></span><span class="nav-label">Metrics</span></a>
       <span class="nav-sep">Tools</span>
+      <a href="#" data-view="ml-analytics"><span class="marker" style="background:var(--ac-wh)"></span><span class="nav-label">ML Analytics</span></a>
       <a href="#" data-view="documents"><span class="marker" style="background:var(--ac-wh)"></span><span class="nav-label">Documents</span></a>
       <a href="#" data-view="playground"><span class="marker" style="background:var(--ac-model)"></span><span class="nav-label">Playground</span></a>
     </nav>
@@ -364,12 +488,13 @@
 
   <main class="content">
     <div class="topbar">
-      <h1><span class="dot" id="statusDot"></span>&nbsp;Control center<span class="sub">opencode-pi gateway</span></h1>
+      <h1><span class="dot" id="statusDot"></span>&nbsp;Control center<span class="sub">opencode-pi gateway · <span id="bModel">Qwen2.5-Coder-3B-Instruct</span></span></h1>
       <span class="spacer"></span>
       <div class="row actions" style="flex:1 0 auto; justify-content:flex-end">
         <input type="password" id="key" placeholder="Admin API key" autocomplete="off" style="width:220px;margin:0">
         <input type="password" id="iKey" placeholder="Inference key (playground)" autocomplete="off" style="width:220px;margin:0">
         <button id="btnTheme" style="margin:0">Theme: Dark</button>
+        <button id="btnCompact" style="margin:0">Compact: on</button>
       </div>
     </div>
 
@@ -404,6 +529,7 @@
           <h2>Model</h2>
           <div class="row"><span class="k">name</span><span id="mName">—</span></div>
           <div class="row"><span class="k">quantization</span><span id="mQuant">—</span></div>
+          <div class="row"><span class="k">context window</span><span id="mCtx">—</span></div>
           <div class="row"><span class="k">gateway</span><span id="mGw" class="chip">—</span></div>
           <div class="row"><span class="k">llama</span><span id="mLl" class="chip">—</span></div>
           <div class="row"><span class="k">model loaded</span><span id="mLoaded" class="chip">—</span></div>
@@ -417,54 +543,15 @@
           <button id="btnUpdate">Update model</button>
         </div>
         <div class="card ac-wh full" id="dash-analytics">
-          <h2>Analytics <span id="anLevel" class="chip">—</span> <span id="anNnChip" class="chip">tf-lite —</span></h2>
+          <h2>Analytics <span id="anLevel" class="chip">—</span> <span id="anNnChip" class="chip">tf-lite —</span> <button id="btnGoMl" class="mini-sync">Open ML Analytics</button></h2>
           <div class="row"><span class="k">risk</span><span id="anRisk">connecting…</span></div>
-          <div class="row"><span class="k">Hotelling T²</span><span id="anT2">—</span></div>
-          <div class="row"><span class="k">p-value</span><span id="anP">—</span></div>
+          <div class="row"><span class="k">Hotelling T² · p</span><span><span id="anT2">—</span> · <span id="anP">—</span></span></div>
           <div class="row"><span class="k">compute ms</span><span id="anMs">—</span></div>
           <div class="row"><span class="k">windows scored</span><span id="anWin">—</span></div>
-          <div id="pcaBars" class="pca-wrap"></div>
-          <div id="anPca" class="muted" style="font-size:11.5px;font-family:var(--mono);margin:4px 0 2px"></div>
-          <div class="row"><span class="k">telemetry → model</span><span id="anModel" class="chip">—</span></div>
-          <div class="row"><span class="k">input → TF model</span><span id="anIn" style="font-family:var(--mono);font-size:11.5px;word-break:break-word;white-space:normal">—</span></div>
-          <div class="row"><span class="k">TF inference</span><span id="anNn">—</span></div>
-          <div class="row"><span class="k">system / ML speed</span><span id="anSys">—</span></div>
-          <div class="row"><span class="k">ingest</span><span id="anIngest" class="chip">—</span></div>
-          <div class="row"><span class="k">training</span><span id="anTrain">—</span></div>
-          <div class="row"><span class="k">best model</span><span id="anBest">—</span></div>
-          <div class="row"><span class="k">config</span><span id="anCfg" class="muted">—</span></div>
-          <div id="anTrials" class="muted" style="font-size:11px;font-family:var(--mono);line-height:1.5"></div>
-          <div class="row actions" style="margin-top:6px;gap:6px;flex-wrap:wrap">
-            <button id="btnInferNow">Run TF inference</button>
-            <button id="btnMetaNow">Refresh meta</button>
-            <button id="btnTrainNow">Run training</button>
-            <button id="btnRebaseline">Rebaseline</button>
-          </div>
-          <details id="anCfgPanel" class="cfgbox">
-            <summary>Model config & input filters</summary>
-            <div class="cfg-grid">
-              <label>ingest <input type="checkbox" id="cfgIngest"></label>
-              <label>ewma decay <input type="number" id="cfgDecay" step="0.05" min="0.01" max="0.9"></label>
-              <label>context windows <input type="number" id="cfgCtx" min="2" max="200"></label>
-              <label>PCA components <input type="number" id="cfgPca" min="1" max="10"></label>
-              <label>watch σ <input type="number" id="cfgWatch" step="0.1" min="0.1"></label>
-              <label>high σ <input type="number" id="cfgHigh" step="0.1" min="0.1"></label>
-              <label class="wide">cron (5-field UTC) <input type="text" id="cfgCron" placeholder="*/10 * * * *"></label>
-              <label class="wide">next run <input type="text" id="cfgNextRun" readonly></label>
-              <label>train: min rows <input type="number" id="cfgMin" min="10"></label>
-              <label>epochs <input type="number" id="cfgEpochs" min="1"></label>
-              <label>batch <input type="number" id="cfgBatch" min="1"></label>
-              <label>trials <input type="number" id="cfgTrials" min="1"></label>
-              <label>validation <input type="number" id="cfgVal" step="0.05" min="0" max="0.5"></label>
-              <label>seed <input type="number" id="cfgSeed"></label>
-              <label class="wide">watermark (trainedUpTo) <input type="text" id="cfgWm" readonly></label>
-            </div>
-            <div id="cfgFeats" class="feat-grid"></div>
-            <div class="row actions" style="margin-top:6px"><button id="btnSaveCfg">Save config</button></div>
-          </details>
+          <div class="doc-note" style="margin-top:6px">Ingest, training, config, 3D PCA explorer, drift and box-plots live on the ML Analytics page.</div>
         </div>
         <div class="card ac-evt full" id="dash-stream-card">
-          <h2>Live activity</h2>
+          <h2>Live activity <button id="btnClearStream" class="mini-sync">Clear</button></h2>
           <div class="log" id="dashStream"></div>
         </div>
         <div class="card ac-stream full" id="pipe-streams">
@@ -489,48 +576,65 @@
     <section class="view hide" id="view-connections">
       <div class="dashboard">
         <div class="card ac-conn" id="conn-gw">
-          <h2>Gateway <span id="cGw" class="chip">—</span></h2>
+          <h2>Gateway <span id="cGw" class="chip">—</span> <button class="mini-sync" data-c="gw">sync</button></h2>
           <div class="row"><span class="k">endpoint</span><span>localhost:8080 /health</span></div>
           <div class="row"><span class="k">latency</span><span id="cGwLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cGwSync">—</span></div>
         </div>
         <div class="card ac-model" id="conn-llama">
-          <h2>llama-server <span id="cLl" class="chip">—</span></h2>
+          <h2>llama-server <span id="cLl" class="chip">—</span> <button class="mini-sync" data-c="llama">sync</button></h2>
           <div class="row"><span class="k">endpoint</span><span id="cLlEp">—</span></div>
           <div class="row"><span class="k">latency</span><span id="cLlLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cLlSync">—</span></div>
         </div>
         <div class="card ac-model" id="conn-model">
-          <h2>Model store <span id="cMo" class="chip">—</span></h2>
+          <h2>Model store <span id="cMo" class="chip">—</span> <button class="mini-sync" data-c="model">sync</button></h2>
           <div class="row"><span class="k">endpoint</span><span>/api/model</span></div>
           <div class="row"><span class="k">latency</span><span id="cMoLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cMoSync">—</span></div>
         </div>
         <div class="card ac-sys" id="conn-sys">
-          <h2>Host metrics <span id="cSys" class="chip">—</span></h2>
+          <h2>Host metrics <span id="cSys" class="chip">—</span> <button class="mini-sync" data-c="sys">sync</button></h2>
           <div class="row"><span class="k">endpoint</span><span>/api/system</span></div>
           <div class="row"><span class="k">latency</span><span id="cSysLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cSysSync">—</span></div>
         </div>
         <div class="card ac-evt" id="conn-logs">
-          <h2>Logs <span id="cLg" class="chip">—</span></h2>
+          <h2>Logs <span id="cLg" class="chip">—</span> <button class="mini-sync" data-c="logs">sync</button></h2>
           <div class="row"><span class="k">endpoint</span><span>/api/logs</span></div>
           <div class="row"><span class="k">latency</span><span id="cLgLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cLgSync">—</span></div>
         </div>
         <div class="card ac-stream" id="conn-reqs">
-          <h2>Requests <span id="cRq" class="chip">—</span></h2>
+          <h2>Requests <span id="cRq" class="chip">—</span> <button class="mini-sync" data-c="reqs">sync</button></h2>
           <div class="row"><span class="k">endpoint</span><span>/api/requests</span></div>
           <div class="row"><span class="k">latency</span><span id="cRqLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cRqSync">—</span></div>
         </div>
         <div class="card ac-model" id="conn-oc">
-          <h2>opencode agent <span id="cOc" class="chip">—</span></h2>
+          <h2>opencode agent <span id="cOc" class="chip">—</span> <button class="mini-sync" data-c="oc">sync</button></h2>
           <div class="row"><span class="k">endpoint</span><span>localhost:8080 /v1/chat/completions</span></div>
           <div class="row"><span class="k">auth</span><span>inference key · Bearer</span></div>
           <div class="row"><span class="k">model</span><span id="cOcModel">—</span></div>
           <div class="row"><span class="k">latency</span><span id="cOcLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cOcSync">—</span></div>
+        </div>
+        <div class="card ac-wh" id="conn-wh-redis">
+          <h2>Warehouse · Redis <span id="cWhRedis" class="chip">—</span> <button class="mini-sync" data-c="whredis">sync</button></h2>
+          <div class="row"><span class="k">engine</span><span>redis · :6379 (compose volume)</span></div>
+          <div class="row"><span class="k">keys</span><span id="cWhRedisKeys" style="font-family:var(--mono);font-size:11.5px;white-space:normal">—</span></div>
+          <div class="row"><span class="k">memory</span><span id="cWhRedisMem">—</span></div>
+          <div class="row"><span class="k">appendonly</span><span id="cWhRedisAof">—</span></div>
+          <div class="row"><span class="k">latency</span><span id="cWhRedisLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cWhRedisSync">—</span></div>
+        </div>
+        <div class="card ac-model" id="conn-ml">
+          <h2>ML artifact store <span id="cMlm" class="chip">—</span> <button class="mini-sync" data-c="mlm">sync</button></h2>
+          <div class="row"><span class="k">meta / model</span><span id="cMlmModel">—</span></div>
+          <div class="row"><span class="k">artifacts dir</span><span id="cMlmDir" style="word-break:break-all">—</span></div>
+          <div class="row"><span class="k">tflite · savedmodel</span><span id="cMlmFiles" style="font-size:11.5px;white-space:normal">—</span></div>
+          <div class="row"><span class="k">latency</span><span id="cMlmLat">—</span></div>
+          <div class="row"><span class="k">last sync</span><span id="cMlmSync">—</span></div>
         </div>
         <div class="card ac-host full" id="conn-host">
           <h2>Host</h2>
@@ -550,23 +654,14 @@
             </tbody>
           </table>
         </div>
-        <div class="card ac-wh" id="conn-wh-sql">
-          <h2>Warehouse · SQLite <span id="cWhSql" class="chip">—</span></h2>
+        <div class="card ac-wh full" id="conn-wh-sql">
+          <h2>Warehouse · SQLite <span id="cWhSql" class="chip">—</span> <button class="mini-sync" data-c="whsql">sync</button></h2>
           <div class="row"><span class="k">engine</span><span>sqlite · analytics:8081</span></div>
           <div class="row"><span class="k">db</span><span id="cWhSqlPath" style="word-break:break-all">—</span></div>
           <div class="row"><span class="k">tables</span><span id="cWhSqlTables" style="white-space:normal;font-size:11.5px">—</span></div>
           <div class="row"><span class="k">windows / requests</span><span id="cWhSqlCount">—</span></div>
           <div class="row"><span class="k">latency</span><span id="cWhSqlLat">—</span></div>
           <div class="row"><span class="k">last sync</span><span id="cWhSqlSync">—</span></div>
-        </div>
-        <div class="card ac-wh" id="conn-wh-redis">
-          <h2>Warehouse · Redis <span id="cWhRedis" class="chip">—</span></h2>
-          <div class="row"><span class="k">engine</span><span>redis · :6379 (compose volume)</span></div>
-          <div class="row"><span class="k">keys</span><span id="cWhRedisKeys" style="font-family:var(--mono);font-size:11.5px;white-space:normal">—</span></div>
-          <div class="row"><span class="k">memory</span><span id="cWhRedisMem">—</span></div>
-          <div class="row"><span class="k">appendonly</span><span id="cWhRedisAof">—</span></div>
-          <div class="row"><span class="k">latency</span><span id="cWhRedisLat">—</span></div>
-          <div class="row"><span class="k">last sync</span><span id="cWhRedisSync">—</span></div>
         </div>
       </div>
     </section>
@@ -593,20 +688,36 @@
           <textarea class="pnote" id="pnote-update" placeholder="Note (optional)"></textarea>
         </div>
         <div class="card ac-wh full" id="pipe-warehouse">
-          <h2>analytics warehouse <span id="pWhStatus" class="chip">—</span></h2>
+          <h2>analytics warehouse <span id="pWhStatus" class="chip">—</span> <button class="mini-sync" data-c="whsql">sync</button></h2>
           <div class="row"><span class="k">pipeline</span><span>ingest → windows · requests → reference → scoring → training_runs → models</span></div>
           <div class="row"><span class="k">sqlite tables</span><span id="pWhSql" style="white-space:normal;font-size:11.5px">—</span></div>
           <div class="row"><span class="k">redis backing</span><span id="pWhRedis">—</span></div>
-          <div class="row"><span class="k">scores path</span><span>analytics:8081 → POST /api/analytics/scores → SSE + WS fan-out</span></div>
+          <div class="row"><span class="k">scores path</span><span>sqlite → risk SSE (<span class="k mono">/v1/analytics/stream</span>) → WS fan-out to UI</span></div>
+          <div class="row"><span class="k">db file</span><span id="pWhDb" style="word-break:break-all">—</span></div>
           <div class="row"><span class="k">raw history</span><span id="pWhRaw">—</span></div>
           <textarea class="pnote" id="pnote-warehouse" placeholder="Note (optional)"></textarea>
+        </div>
+        <div class="card ac-model full" id="pipe-ml">
+          <h2>TF training pipeline <span id="pMlStatus" class="chip">—</span> <button class="mini-sync" data-c="mlm">sync</button></h2>
+          <div class="row"><span class="k">pipeline</span><span>label windows → auto retrain → export savedmodel → tflite → live classify</span></div>
+          <div class="row"><span class="k">artifacts dir</span><span id="pMlDir" style="word-break:break-all">—</span></div>
+          <div class="row"><span class="k">model</span><span id="pMlModel">—</span></div>
+          <div class="row"><span class="k">watermark</span><span id="pMlWm">—</span></div>
+          <div class="row"><span class="k">trials · epochs</span><span><span id="pMlTrials">—</span> · <span id="pMlEpochs">—</span></span></div>
+          <div class="row"><span class="k">next run</span><span id="pMlNext">—</span></div>
+          <textarea class="pnote" id="pnote-ml" placeholder="Note (optional)"></textarea>
+        </div>
+        <div class="card ac-evt full" id="pipe-stream-card">
+          <h2>Pipeline live stream <button id="btnClearPipeStream" class="mini-sync">Clear</button></h2>
+          <div class="log" id="pipeStream"></div>
+        </div>
         </div>
       </div>
     </section>
 
     <section class="view hide" id="view-warehouse">
       <div class="dashboard">
-        <div class="card ac-wh span2" id="wh-conn">
+        <div class="card ac-wh full" id="wh-conn">
           <h2>Warehouse connections <span id="whStatus" class="chip">—</span></h2>
           <div class="row"><span class="k">sqlite</span><span id="whSqlLine">—</span></div>
           <div class="row"><span class="k">redis</span><span id="whRedisLine">—</span></div>
@@ -670,10 +781,28 @@
         </div>
         <div class="card ac-wh full" id="st-paths">
           <h2>Storage paths</h2>
-          <div class="row"><span class="k">llama runtime</span><span>/opt/llama</span></div>
+          <div class="row"><span class="k">llama runtime</span><span>/opt/llama (read-only host bind)</span></div>
           <div class="row"><span class="k">model dir</span><span id="stModelDir">—</span></div>
-          <div class="row"><span class="k">ml artifacts (planned)</span><span>/opt/qwen-ml (backend pending)</span></div>
-          <div class="row"><span class="k">warehouse (planned)</span><span>sqlite external mount + redis volume (backend pending)</span></div>
+          <div class="row"><span class="k">ml artifacts</span><span id="stMlDir">—</span></div>
+          <div class="row"><span class="k">warehouse sqlite</span><span id="stWhPath">—</span></div>
+          <div class="row"><span class="k">warehouse redis</span><span>docker named volume · AOF</span></div>
+        </div>
+        <div class="card ac-wh full" id="st-raw">
+          <h2>Warehouse &amp; artifacts</h2>
+          <div class="row"><span class="k">tables</span><span id="stTables" style="font-family:var(--mono);font-size:11.5px;white-space:normal">—</span></div>
+          <div class="row"><span class="k">windows (raw) / labeled</span><span id="stWindows">—</span></div>
+          <div class="row"><span class="k">requests (raw)</span><span id="stRequests">—</span></div>
+          <div class="row"><span class="k">db size</span><span id="stDbSize">—</span></div>
+          <div class="row"><span class="k">latest window</span><span id="stLatestWin">—</span></div>
+          <div class="row"><span class="k">training artifacts</span><span id="stTrainFiles" style="font-size:11.5px;word-break:break-all">—</span></div>
+          <div class="row"><span class="k">redis copy</span><span id="stRedisCopy">—</span></div>
+        </div>
+        <div class="card ac-wh full" id="st-persist">
+          <h2>Persistence</h2>
+          <div class="row"><span class="k">✓ model store</span><span>/opt/qwen-model gguf · host bind, survives down -v</span></div>
+          <div class="row"><span class="k">✓ analytics sqlite</span><span>/opt/qwen-ml/analytics.db · host bind, survives down -v</span></div>
+          <div class="row"><span class="k">✓ ml artifacts</span><span>/opt/qwen-ml risk tflite + savedmodel · host bind</span></div>
+          <div class="row"><span class="k">✗ redis working copy</span><span>docker named volume · wiped on down -v (sqlite is source of truth)</span></div>
         </div>
       </div>
     </section>
@@ -686,6 +815,11 @@
             <button data-level="all" class="active">All</button>
             <button data-level="error">Errors</button>
             <button data-level="warn">Warn+</button>
+            <span class="f-sep"></span>
+            <button data-source="all" class="active">All sources</button>
+            <button data-source="ml">ML</button>
+            <button data-source="req">Requests</button>
+            <button data-source="sys">System</button>
           </div>
           <div class="log" id="log"></div>
         </div>
@@ -703,10 +837,167 @@
             <div class="spark-item" style="border-top-color:var(--ac-stream)"><h3>API calls/min</h3><div class="mstat" id="mApm">—</div><canvas class="spark" id="spApm"></canvas></div>
             <div class="spark-item" style="border-top-color:var(--ac-model)"><h3>tok/s</h3><div class="mstat" id="mTps">—</div><canvas class="spark" id="spTps"></canvas></div>
           </div>
+          <div class="spark-grid" style="margin-top:6px">
+            <div class="spark-item" style="border-top-color:var(--ac-model)"><h3>labeled rows</h3><div class="mstat" id="mRows">—</div><canvas class="spark" id="mSpRows"></canvas></div>
+            <div class="spark-item" style="border-top-color:var(--ac-model)"><h3>windows</h3><div class="mstat" id="mWin">—</div><canvas class="spark" id="mSpWin"></canvas></div>
+            <div class="spark-item" style="border-top-color:var(--ac-stream)"><h3>requests</h3><div class="mstat" id="mReq">—</div><canvas class="spark" id="mSpReq"></canvas></div>
+            <div class="spark-item" style="border-top-color:var(--ac-model)"><h3>tflite model</h3><div class="mstat" id="mTfl">—</div><canvas class="spark" id="mSpTfl"></canvas></div>
+          </div>
         </div>
         <div class="card ac-host full">
           <h2>Host &amp; runtime</h2>
           <div data-neo class="neofetch"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view hide" id="view-ml-analytics">
+      <div class="dashboard">
+        <div class="card ac-model span2" id="ml-score">
+          <h2>ML risk scorecard <span id="mlLevel" class="chip">—</span> <span id="mlNnChip" class="chip">tf-lite —</span> <span id="mlModelChip" class="chip">model —</span></h2>
+          <div class="row"><span class="k">risk</span><span id="mlRisk">connecting…</span></div>
+          <div class="row"><span class="k">Hotelling T² · p-value</span><span><span id="mlT2">—</span> · <span id="mlP">—</span></span></div>
+          <div class="row"><span class="k">compute · nn ms</span><span><span id="mlMs">—</span> · <span id="mlNnMs">—</span></span></div>
+          <div class="row"><span class="k">windows scored</span><span id="mlWin">—</span></div>
+          <div id="pcaBars" class="pca-wrap"></div>
+          <div id="anPca" class="muted" style="font-size:11.5px;font-family:var(--mono);margin:4px 0 2px"></div>
+          <div class="row"><span class="k">input → TF model</span><span id="anIn" style="font-family:var(--mono);font-size:11.5px;word-break:break-word;white-space:normal">—</span></div>
+          <div class="row"><span class="k">TF inference</span><span id="anNn">—</span></div>
+          <div class="row"><span class="k">system / ML speed</span><span id="anSys">—</span></div>
+        </div>
+        <div class="card ac-sys" id="ml-short">
+          <h2>Live</h2>
+          <div class="row"><span class="k">window clock</span><span id="mlWinClock" class="chip">—</span></div>
+          <div class="row"><span class="k">tele ticker</span><span id="mlTeleTicker" class="chip">—</span></div>
+          <div class="row"><span class="k">ingest</span><span id="anIngest" class="chip">—</span></div>
+          <div class="row"><span class="k">training</span><span id="anTrain">—</span></div>
+          <div class="row"><span class="k">telemetry → model</span><span id="anModel" class="chip">—</span></div>
+          <div class="row"><span class="k">best model</span><span id="anBest">—</span></div>
+          <div class="row"><span class="k">config</span><span id="anCfg" class="muted">—</span></div>
+        </div>
+        <div class="card ac-wh full" id="ml-docs">
+          <h2>Analytics docs &amp; pipeline flow</h2>
+          <div class="pipe-flow">
+            <div class="pipe-step"><b>telemetry</b>gateway → /v1/analytics/ingest</div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>window</b>10 masked features</div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>EWMA ref</b>adaptive μ · σ</div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>PCA + T²</b>z → pcz · χ² p-value</div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>label</b>top-3 |pcz| vs watch/high σ</div><span class="pipe-arrow">→</span>
+            <div class="pipe-step"><b>risk</b>sse stream · ws → ui</div>
+          </div>
+          <div class="pipe-feed">
+            <div class="pipe-flow" style="margin-top:6px">
+              <div class="pipe-step"><b>warehouse</b>windows · requests · reference</div><span class="pipe-arrow">→</span>
+              <div class="pipe-step"><b>dataset</b>raw masked X · risk y</div><span class="pipe-arrow">→</span>
+              <div class="pipe-step"><b>train</b>random-search MLR/MLP</div><span class="pipe-arrow">→</span>
+              <div class="pipe-step"><b>fine-tune</b>since watermark</div><span class="pipe-arrow">→</span>
+              <div class="pipe-step"><b>export</b>savedmodel → risk.tflite</div>
+            </div>
+            <div class="pipe-note">TFLite model classifies each scored window's raw masked vector → <span class="mono">nnRisk</span> (fed back to the scorecard, not into training labels).</div>
+          </div>
+          <div class="pipe-note">Docs: <a href="#" onclick="showView('documents');return false">Documents → analytics layer · API surface</a> · repo file <span class="mono">docs/analytics-layer.md</span> §5 risk, §7 API, §8 training data, §9 artifacts.</div>
+        </div>
+        <div class="card ac-wh full" id="ml-3d">
+          <h2>3D PCA explorer <span id="mlDimChip" class="chip">PC1·PC2·PC3</span></h2>
+          <div class="row actions" style="margin-bottom:6px;gap:6px;flex-wrap:wrap">
+            <button id="btnDimCycle" style="padding:4px 10px;font-size:12px;margin:0">Cycle dims</button>
+            <button id="btnRot" style="padding:4px 10px;font-size:12px;margin:0">Rotate: on</button>
+            <button id="btnReset3d" style="padding:4px 10px;font-size:12px;margin:0">Reset</button>
+            <span class="muted" style="margin-left:auto">drag rotate · wheel zoom · hover inspect · click pin</span>
+          </div>
+          <div class="pca-stage"><canvas id="pca3d" class="ml-canvas"></canvas></div>
+          <div class="pca-legend" style="justify-content:flex-end;margin-top:8px">
+            <span>low |z|</span>
+            <div class="pca-scale"></div>
+            <span>high |z|</span>
+            <span class="swatch" style="background:#d9a404;margin-left:10px"></span><span>watch</span>
+            <span class="swatch" style="background:#e04a4a"></span><span>high risk · red halo ≥ high z</span>
+            <span class="swatch" style="background:#fff"></span><span>pinned</span>
+          </div>
+          <div id="mlTooltip" class="muted" style="font-size:11.5px;font-family:var(--mono);margin-top:8px;min-height:18px;white-space:pre-wrap"></div>
+        </div>
+        <div class="ml-split">
+          <div class="card ac-stream" id="ml-ts">
+            <h2>Drift · T² history</h2>
+            <canvas id="barTs" class="ml-canvas" style="height:150px"></canvas>
+            <div class="muted" id="mlTsLabel" style="font-size:11px;margin-top:4px"></div>
+          </div>
+          <div class="card ac-host" id="ml-box">
+            <h2>Feature z · box plots <span id="mlBoxWin" class="chip">current</span></h2>
+            <canvas id="boxFeat" class="ml-canvas" style="height:220px"></canvas>
+            <div class="muted" id="mlBoxLabel" style="font-size:11px;margin-top:4px"></div>
+          </div>
+        </div>
+        <div class="card ac-conn full" id="ml-spark">
+          <h2>Telemetry history</h2>
+          <div class="spark-grid">
+            <div class="spark-item"><h3>T²</h3><div class="mstat" id="mlT2Val">—</div><canvas class="spark" id="spT2"></canvas></div>
+            <div class="spark-item"><h3>compute ms</h3><div class="mstat" id="mlCmMs">—</div><canvas class="spark" id="spCm"></canvas></div>
+            <div class="spark-item"><h3>nn ms</h3><div class="mstat" id="mlNnMsx">—</div><canvas class="spark" id="spNn"></canvas></div>
+            <div class="spark-item"><h3>model F1</h3><div class="mstat" id="mlF1">—</div><canvas class="spark" id="spF1"></canvas></div>
+            <div class="spark-item"><h3>rows</h3><div class="mstat" id="mlRows">—</div><canvas class="spark" id="spRows"></canvas></div>
+          </div>
+        </div>
+        <div class="card ac-pg full" id="ml-train">
+          <h2>Training &amp; inference <span id="mlTrainChip" class="chip">idle</span></h2>
+          <div class="row"><span class="k">state</span><span id="mlTrainState">—</span></div>
+          <div class="row"><span class="k">rows / min</span><span><span id="mlTrainRows">—</span> / <span id="mlTrainMin">—</span></span></div>
+          <div class="row"><span class="k">run</span><span id="mlTrainRun">—</span></div>
+          <div class="row"><span class="k">trials · epochs</span><span><span id="mlTrainTrials">—</span> · <span id="mlTrainEpochs">—</span></span></div>
+          <div class="row"><span class="k">artifacts</span><span id="mlArtifacts">—</span></div>
+          <div class="row"><span class="k">watermark · trained up to</span><span id="mlTrainWm">—</span></div>
+          <div class="row"><span class="k">model metadata</span><span id="mlTrainMeta">—</span></div>
+          <div class="row"><span class="k">best model</span><span id="mlBestModel">—</span></div>
+          <div id="anTrials" class="muted" style="font-size:11px;font-family:var(--mono);line-height:1.5;white-space:pre-wrap"></div>
+          <div class="row actions" style="margin-top:6px;gap:6px;flex-wrap:wrap">
+            <button id="btnTrainNow">Run training</button>
+            <button id="btnTrainWm">Train from watermark</button>
+            <button id="btnTrainFull">Full rebuild</button>
+            <button id="btnInferNow">Run TF inference</button>
+            <button id="btnRebaseline">Rebaseline</button>
+            <button id="btnMetaNow">Refresh meta</button>
+          </div>
+          <div class="table-scroll" style="margin-top:8px">
+            <table class="doc" id="mlRunsTable">
+              <thead><tr><th>when</th><th>state</th><th>rows</th><th>epochs</th><th>F1</th><th>acc</th><th>best</th><th>sec</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card ac-wh full" id="ml-models">
+          <h2>Registered models <span id="mlModelsChip" class="chip">—</span></h2>
+          <div class="table-scroll">
+            <table class="doc" id="mlModelsTable">
+              <thead><tr><th>id</th><th>name</th><th>kind</th><th>enabled</th><th>created</th><th>watermark</th><th>metadata</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card ac-wh full" id="ml-cfg">
+          <h2>Config &amp; input filters <button id="btnSaveCfg" style="float:right;padding:4px 10px;font-size:12px">Save config</button></h2>
+          <details id="anCfgPanel" class="cfgbox" open>
+            <summary>Model config</summary>
+            <div class="cfg-grid">
+              <label class="wide"><b>Qwen context window</b> <input type="text" id="cfgCtxInfo" readonly placeholder="—" style="font-family:var(--mono)"></label>
+              <div class="doc-note" style="grid-column:1/-1">The Qwen model's context window is a llama.cpp / --ctx-size property (set at launch), not an ML config option. Analyzer window count is fixed by ANALYTICS_CONTEXT_WINDOWS.</div>
+              <label>ingest <input type="checkbox" id="cfgIngest"></label>
+              <label>ewma decay <input type="number" id="cfgDecay" step="0.05" min="0.01" max="0.9"></label>
+              <label>PCA components <input type="number" id="cfgPca" min="1" max="10"></label>
+              <label>watch σ <input type="number" id="cfgWatch" step="0.1" min="0.1"></label>
+              <label>high σ <input type="number" id="cfgHigh" step="0.1" min="0.1"></label>
+              <label class="wide">cron (5-field UTC) <input type="text" id="cfgCron" placeholder="*/10 * * * *"></label>
+              <label class="wide">next run <input type="text" id="cfgNextRun" readonly></label>
+              <label>train: min rows <input type="number" id="cfgMin" min="10"></label>
+              <label>epochs <input type="number" id="cfgEpochs" min="1"></label>
+              <label>batch <input type="number" id="cfgBatch" min="1"></label>
+              <label>trials <input type="number" id="cfgTrials" min="1"></label>
+              <label>validation <input type="number" id="cfgVal" step="0.05" min="0" max="0.5"></label>
+              <label>seed <input type="number" id="cfgSeed"></label>
+              <label class="wide">watermark (trainedUpTo) <input type="text" id="cfgWm" readonly></label>
+            </div>
+          </details>
+          <div id="cfgFeats" class="feat-grid"></div>
+          <div class="doc-note">Incremental fine-tuning runs when new labeled windows exist past the watermark (needs ≥ minRows labeled).</div>
         </div>
       </div>
     </section>
@@ -721,13 +1012,13 @@
             endpoint (<span class="method">localhost:8080 /v1/chat/completions</span>, bearer
             <span class="k mono">INFERENCE_API_KEY</span>) and the gateway runs
             <span class="k mono">llama-server</span> (llama.cpp) inside its Docker container to
-            serve <span class="k mono">Qwen3-1.7B</span> (4-bit Q4_K_M, context 32768).
+            serve <span class="k mono">Qwen2.5-Coder-3B-Instruct</span> (4-bit Q4_K_M, context 32768).
             <ul>
               <li><span class="k">Control plane</span> — admin API under <span class="method">/api/*</span> plus the realtime <span class="method">/ws</span> stream; key via <span class="k mono">x-api-key</span>.</li>
               <li><span class="k">Inference plane</span> — OpenAI-compatible <span class="method">/v1/*</span>; key via <span class="k mono">Authorization: Bearer</span> or <span class="k mono">x-api-key</span>.</li>
               <li><span class="k">Provisioning</span> — <span class="k mono">scripts/install.sh</span> installs llama-server + the 4-bit model, <span class="k mono">scripts/update.sh</span> swaps llama.cpp and the model, <span class="k mono">scripts/cleanup.sh</span> removes old artifacts.</li>
-              <li><span class="k">Storage</span> — model GGUF lives on NVMe at <span class="k mono">/opt/qwen-model</span>, mounted into the container at <span class="k mono">/models</span>. A warehouse SQLite store is planned on NVMe too (PRD §6.13).</li>
-              <li><span class="k">Analytics</span> — metrics/sparkline sampling is live under <span class="method">/api/metrics</span>; feature/embedding analytics is a planned microservice.</li>
+              <li><span class="k">Storage</span> — model GGUF lives on NVMe at <span class="k mono">/opt/qwen-model</span>, mounted into the container at <span class="k mono">/models</span>. ML artifacts and the warehouse SQLite DB live on NVMe at <span class="k mono">/opt/qwen-ml</span> (sqlite file <span class="k mono">analytics.db</span>, persists across <span class="k mono">docker compose down -v</span>).</li>
+              <li><span class="k">Analytics</span> — an analytics microservice (Python/FastAPI, container <span class="k mono">analytics</span>) windows the gateway telemetry every 60s, scores each window against an EWMA reference (Hotelling T² + z-scores), exposes the live scorecard under <span class="method">/api/analytics/*</span>, and auto-trains a TF risk classifier (saved-model → TFLite → live inference on every scored window). Training is gated on new labeled windows past the watermark, so re-training only happens when the distribution drifts.</li>
             </ul>
           </div>
         </div>
@@ -737,7 +1028,7 @@
             <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr></thead>
             <tbody>
               <tr><td class="method">GET</td><td class="mono">/health</td><td>none</td><td>Liveness probe used by the gateway connection check</td></tr>
-              <tr><td class="method">GET</td><td class="mono">/v1/models</td><td>inference</td><td>Model list for OpenAI-compatible clients (ID aliased to <span class="mono">Qwen3-1.7B</span>)</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/v1/models</td><td>inference</td><td>Model list for OpenAI-compatible clients (ID aliased to <span class="mono">Qwen2.5-Coder-3B-Instruct</span>)</td></tr>
               <tr><td class="method">POST</td><td class="mono">/v1/chat/completions</td><td>inference</td><td>Chat completions forwarded to llama-server</td></tr>
               <tr><td class="method">GET</td><td class="mono">/api/status</td><td>admin</td><td>Gateway / llama / model status snapshot</td></tr>
               <tr><td class="method">GET</td><td class="mono">/api/model</td><td>admin</td><td>Model metadata + live llama args</td></tr>
@@ -746,6 +1037,25 @@
               <tr><td class="method">GET</td><td class="mono">/api/system</td><td>admin</td><td>Live CPU / memory / temp / disk metrics</td></tr>
               <tr><td class="method">GET</td><td class="mono">/api/system/host</td><td>admin</td><td>Host identity, disk, and NVMe/mount info</td></tr>
               <tr><td class="method">GET</td><td class="mono">/api/metrics</td><td>admin</td><td>Sampled metrics history for the sparkline charts</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/risk</td><td>admin</td><td>Live risk scorecard: level, Hotelling T², p-value, per-PC z-scores, NN risk</td></tr>
+              <tr><td class="method">GET/PUT</td><td class="mono">/api/analytics/config</td><td>admin</td><td>Effective config (context windows, EWMA decay, PCA, thresholds, cron, train knobs, feature filter) and apply updates</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/meta</td><td>admin</td><td>Meta: model activity, tflite/savedmodel sizes, latency, input vector feeding the TF model</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/api/analytics/infer</td><td>admin</td><td>Run TFLite inference on the latest stored window</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/api/analytics/infer/current</td><td>srv</td><td>Live per-sample TFLite inference (gateway → analytics, read-only)</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/api/analytics/training/start</td><td>admin</td><td>Force a TF training run (auto-train also triggers on drift)</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/training/status</td><td>admin</td><td>Training state, row counts, artifacts, watermark (trainedUpTo)</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/training/runs</td><td>admin</td><td>History of training runs with metrics + hyperparams</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/models</td><td>admin</td><td>Registered risk models (id, kind, enabled, filter, sampling, metadata incl. watermark)</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/api/analytics/rebaseline</td><td>admin</td><td>Reset the EWMA reference distribution to the current window</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/pca/cloud</td><td>admin</td><td>Per-window PCA projections + z-scores + features for the 3D explorer</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/historic/windows</td><td>admin</td><td>Recent scored windows (timestamp, projection, T² drift, risk)</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/latency/history</td><td>admin</td><td>Compute + NN latency time series</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/reference</td><td>admin</td><td>EWMA reference snapshot (μ, σ², n)</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/warehouse/sql</td><td>admin</td><td>SQLite tables, row counts, size, file path</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/warehouse/redis</td><td>admin</td><td>Redis backing status (keys, memory, AOF)</td></tr>
+              <tr><td class="method">POST</td><td class="mono">/api/analytics/warehouse/query</td><td>admin</td><td>Read-only SQL execution against the warehouse DB</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/warehouse/raw/windows</td><td>admin</td><td>Raw window rows with named features + per-window z-scores</td></tr>
+              <tr><td class="method">GET</td><td class="mono">/api/analytics/warehouse/raw/requests</td><td>admin</td><td>Raw request rows (6 request features)</td></tr>
               <tr><td class="method">GET</td><td class="mono">/api/logs</td><td>admin</td><td>Recent structured log entries</td></tr>
               <tr><td class="method">GET</td><td class="mono">/api/requests</td><td>admin</td><td>Rendered request ring buffer</td></tr>
               <tr><td class="method">WS</td><td class="mono">/ws?key=…</td><td>admin</td><td>Realtime event stream (status, requests, logs, metrics)</td></tr>
@@ -764,12 +1074,12 @@
               <tr><td class="k">LLAMA_HOST</td><td>llama-server bind address</td><td class="mono">127.0.0.1</td></tr>
               <tr><td class="k">LLAMA_PORT</td><td>llama-server port</td><td class="mono">8000</td></tr>
               <tr><td class="k">LLAMA_BIN</td><td>llama-server path in the container</td><td class="mono">/opt/llama/llama-server</td></tr>
-              <tr><td class="k">LLAMA_CONTEXT_SIZE</td><td>Context window (Qwen3-1.7B max 32768)</td><td class="mono">32768</td></tr>
+              <tr><td class="k">LLAMA_CONTEXT_SIZE</td><td>Context window (Qwen2.5-Coder-3B-Instruct max 32768)</td><td class="mono">32768</td></tr>
               <tr><td class="k">LLAMA_THREADS</td><td>CPU threads</td><td>unset (llama decides)</td></tr>
               <tr><td class="k">LLAMA_BATCH_SIZE</td><td>Prompt batch size</td><td>unset</td></tr>
               <tr><td class="k">LLAMA_PARALLEL</td><td>Parallel sequences</td><td>unset</td></tr>
               <tr><td class="k">LLAMA_EXTRA_ARGS</td><td>Additional llama-server flags</td><td>unset</td></tr>
-              <tr><td class="k">MODEL_NAME</td><td>Display name / alias exposed by /v1</td><td class="mono">Qwen3-1.7B</td></tr>
+              <tr><td class="k">MODEL_NAME</td><td>Display name / alias exposed by /v1</td><td class="mono">Qwen2.5-Coder-3B-Instruct</td></tr>
               <tr><td class="k">MODEL_URL</td><td>GGUF download URL</td><td>required</td></tr>
               <tr><td class="k">MODEL_FILE</td><td>Active filename under /models</td><td class="mono">current.gguf</td></tr>
               <tr><td class="k">MODEL_SHA256</td><td>Expected download checksum</td><td>optional</td></tr>
@@ -777,6 +1087,18 @@
               <tr><td class="k">MODEL_DIR</td><td>Host model directory (NVMe)</td><td class="mono">/opt/qwen-model</td></tr>
               <tr><td class="k">AUTO_UPDATE_MODEL</td><td>Opt-in automatic model updates</td><td class="mono">false</td></tr>
               <tr><td class="k">AUTO_UPDATE_INTERVAL</td><td>Model update cadence</td><td class="mono">24h</td></tr>
+              <tr><td class="k">ANALYTICS_URL</td><td>Analytics microservice URL (gateway proxy target)</td><td class="mono">http://analytics:8081</td></tr>
+              <tr><td class="k">INGEST_SECRET</td><td>Shared auth secret for analytics ingest + stream (gateway pusher and analytics service)</td><td>required</td></tr>
+              <tr><td class="k">ANALYTICS_FEATURE_WINDOW_SEC</td><td>Telemetry window length for feature extraction</td><td class="mono">60</td></tr>
+              <tr><td class="k">ANALYTICS_PORT</td><td>Analytics container listen port</td><td class="mono">8081</td></tr>
+              <tr><td class="k">ANALYTICS_DB_FILE</td><td>Warehouse SQLite file (NVMe, survives compose down -v)</td><td class="mono">/opt/qwen-ml/analytics.db</td></tr>
+              <tr><td class="k">ANALYTICS_CONTEXT_WINDOWS</td><td>Windows held in Redis for feature extraction</td><td class="mono">12</td></tr>
+              <tr><td class="k">ANALYTICS_EWMA_DECAY</td><td>Reference EWMA decay (0..1)</td><td class="mono">0.1</td></tr>
+              <tr><td class="k">ANALYTICS_PCA_COMPONENTS</td><td>Active PCA components for scoring</td><td class="mono">6</td></tr>
+              <tr><td class="k">ANALYTICS_PCA_WATCH_Z · HIGH_Z</td><td>Watch / high risk z thresholds</td><td class="mono">1.0 / 1.5</td></tr>
+              <tr><td class="k">ANALYTICS_ML_DIR</td><td>ML artifacts dir (models, tflite, logs)</td><td class="mono">/opt/qwen-ml</td></tr>
+              <tr><td class="k">ANALYTICS_TRAIN_MIN_ROWS / EPOCHS / BATCH</td><td>TF auto-train defaults</td><td class="mono">4000 / 10 / 64</td></tr>
+              <tr><td class="k">REDIS_URL</td><td>Redis backing store URL</td><td class="mono">redis://redis:6379/0</td></tr>
             </tbody>
           </table>
         </div>
@@ -808,7 +1130,7 @@
   const keyInput = document.getElementById("key");
   const iKeyInput = document.getElementById("iKey");
   const q = (id) => document.getElementById(id);
-  const $s = (id, v) => (q(id).textContent = v);
+  const $s = (id, v) => { const el = q(id); if (el) el.textContent = v; };
 
   function headers() {
     const key = keyInput.value || localStorage.getItem("adminKey");
@@ -854,8 +1176,22 @@
   }
   q("btnTheme").addEventListener("click", cycleTheme);
 
+  function toggleCompact() {
+    const on = document.body.classList.toggle("compact");
+    localStorage.setItem("piCompact", on ? "1" : "0");
+    q("btnCompact").textContent = "Compact: " + (on ? "on" : "off");
+    requestAnimationFrame(() => { renderDims(); render3d(); });
+  }
+  if (localStorage.getItem("piCompact") !== "0") {
+    document.body.classList.add("compact");
+    q("btnCompact").textContent = "Compact: on";
+  }
+  q("btnCompact").addEventListener("click", toggleCompact);
+  q("btnGoMl").addEventListener("click", () => showView("ml-analytics"));
+
   function chip(id, state) {
     const el = q(id);
+    if (!el) return null;
     el.textContent = state == null || state === "" ? "—" : String(state);
     el.className = "chip";
     const ok = ["ready", "online", "loaded", "true", "ok", "200"];
@@ -867,11 +1203,48 @@
     return el;
   }
 
+  const NZ = ["normal", "watch", "high"];
+  function nnTxt(label, prob) {
+    if (!label) return "—";
+    let txt = label;
+    if (Array.isArray(prob) && prob.length === 3) {
+      const idx = NZ.indexOf(label);
+      const pi = idx >= 0 ? prob[idx] : Math.max(...prob);
+      txt += " " + (pi * 100).toFixed(0) + "%";
+      const second = prob
+        .map((p, i) => ({ p, i }))
+        .filter((o) => o.i !== idx && o.p * 100 >= 10)
+        .sort((a, b) => b.p - a.p)[0];
+      if (second) txt += " · " + NZ[second.i] + " " + (second.p * 100).toFixed(0) + "%";
+    }
+    return txt;
+  }
+  function setNnChips(label, prob, ms) {
+    const txt = label ? nnTxt(label, prob) + (ms != null ? " · " + ms.toFixed(1) + "ms" : "") : "—";
+    const an = q("anNnChip"); if (an) { an.textContent = "tf-lite " + txt; }
+    const ml = q("mlNnChip"); if (ml) { ml.textContent = "tf-lite " + txt; }
+  }
+  function updateTeleTicker() {
+    const tele = q("mlTeleTicker");
+    if (!tele) return;
+    let t = tele.textContent.replace(/ · nn .*/, "");
+    if (liveNn && liveNn.label) t += " · nn " + nnTxt(liveNn.label, liveNn.prob);
+    tele.textContent = t;
+  }
+
   function showView(name) {
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("hide", v.id !== "view-" + name));
     document.querySelectorAll("#sideNav a").forEach((a) => a.classList.toggle("active", a.dataset.view === name));
+    document.body.dataset.view = name;
     if (name === "metrics") renderMetrics(true);
     if (name === "warehouse") { loadWarehouse(); loadRaw("windows", 25); }
+    if (name === "ml-analytics") {
+      loadMlPage();
+      ml3d.spinning = ml3d.spinOn;
+      startMlAnim();
+    } else {
+      ml3d.spinning = false;
+    }
     window.scrollTo(0, 0);
   }
   document.querySelectorAll("#sideNav a").forEach((a) => {
@@ -880,9 +1253,10 @@
 
   function buildStatusbar() {
     const bar = q("statusbar");
-    const st = (label, content, hideSm) => {
+    const st = (label, content, hideSm, dataSb) => {
       const s = document.createElement("span");
-      if (hideSm) s.className = "st hide-sm"; else s.className = "st";
+      s.className = "st" + (hideSm ? " hide-sm" : "");
+      if (dataSb) s.dataset.sb = dataSb;
       s.innerHTML = '<span class="lb">' + label + "</span> " + content;
       return s;
     };
@@ -890,10 +1264,15 @@
       st("gw", '<span id="sbGw" class="chip">—</span>'),
       st("llama", '<span id="sbLl" class="chip">—</span>'),
       st("model", '<span id="sbModel" class="chip">—</span>', true),
-      st("cpu", '<span id="sbCpu">—</span>', true),
-      st("mem", '<span id="sbMem">—</span>', true),
-      st("tok/s", '<span id="sbTps">—</span>'),
-      st("api/min", '<span id="sbApm">—</span>'),
+      st("cpu", '<span id="sbCpu">—</span>', true, "system"),
+      st("mem", '<span id="sbMem">—</span>', true, "system"),
+      st("tok/s", '<span id="sbTps">—</span>', false, "system"),
+      st("api/min", '<span id="sbApm">—</span>', false, "system"),
+      st("conn", '<span id="sbConn" class="chip">—</span> <span id="sbConnLast" class="hide-sm"></span>', false, "connections"),
+      st("streams", '<span id="sbStreams" class="chip">—</span> <span id="sbStreamsLast" class="hide-sm"></span>', false, "pipelines"),
+      st("metrics", '<span class="lb">cpu</span> <span id="sbPCpu">—</span> <span class="lb">mem</span> <span id="sbPMem">—</span> <span class="lb">temp</span> <span id="sbPTemp">—</span> <span class="lb">tps</span> <span id="sbPTps">—</span>', false, "metrics"),
+      st("warehouse", '<span id="sbWh" class="chip">—</span> <span id="sbWhLine" class="hide-sm"></span>', false, "warehouse"),
+      st("ml", '<span id="sbMl" class="chip">—</span>', false, "ml"),
     );
     const spacer = document.createElement("span");
     spacer.className = "spacer";
@@ -910,6 +1289,7 @@
   }
   function renderStatusbar(state) {
     if (!q("sbGw")) buildStatusbar();
+    state = Object.assign({}, state, sysState, lastStatus);
     q("sbGw").className = "chip";
     q("sbGw").classList.add(state.gateway === "online" ? "ok" : "err");
     q("sbGw").textContent = state.gateway === "online" ? "online" : "—";
@@ -924,6 +1304,35 @@
     q("sbMem").textContent = state.memory != null ? state.memory.toFixed(0) + "%" : "—";
     q("sbTps").textContent = state.tokensPerSecond != null ? state.tokensPerSecond.toFixed(1) : "—";
     q("sbApm").textContent = state.requestsPerMinute != null ? String(state.requestsPerMinute) : "—";
+    // page-specific segments
+    const okN = Object.values(syncResults).filter((r) => r && !r.skipped && r.ok).length;
+    const failN = Object.values(syncResults).filter((r) => r && !r.skipped && !r.ok).length;
+    const lastSync = Math.max(0, ...Object.values(syncResults).map((r) => (r && r.when) || 0));
+    if (q("sbConn")) {
+      chip("sbConn", okN + " ok" + (failN ? " · " + failN + " bad" : ""));
+      q("sbConnLast").textContent = lastSync ? new Date(lastSync).toLocaleTimeString() : "";
+    }
+    if (q("sbStreams")) {
+      const ps = pipelineStats();
+      const eps = eventsPerSec();
+      chip("sbStreams", ps.active > 0 ? "active" : "idle");
+      q("sbStreamsLast").textContent = eps != null ? eps.toFixed(2) + " ev/s" : (ps.bytes ? fmtBytes(ps.bytes) : "");
+    }
+    if (q("sbPCpu")) {
+      q("sbPCpu").textContent = sysState.cpu != null ? sysState.cpu.toFixed(0) + "%" : "—";
+      q("sbPMem").textContent = sysState.memory != null ? sysState.memory.toFixed(0) + "%" : "—";
+      q("sbPTemp").textContent = sysState.temperature != null ? sysState.temperature.toFixed(1) + "°C" : "—";
+      q("sbPTps").textContent = sysState.tokensPerSecond != null ? sysState.tokensPerSecond.toFixed(1) : "—";
+    }
+    if (q("sbWh")) {
+      chip("sbWh", whSql && whRedis && whRedis.available ? "online" : "—");
+      if (whSql) q("sbWhLine").textContent = whSql.path || "";
+    }
+    if (q("sbMl")) {
+      const lv = (anRisk && anRisk.level) || "—";
+      const el = chip("sbMl", lv);
+      if (anRisk && anRisk.level) el.classList.add(anRisk.level === "high" ? "err" : anRisk.level === "normal" ? "ok" : "warn");
+    }
   }
   function tickClock() {
     if (q("sbClock")) q("sbClock").textContent = new Date().toLocaleString();
@@ -939,8 +1348,15 @@
   const sysState = {};
   const hostState = {};
   const METRIC_HIST = { cpu: [], mem: [], temp: [], apm: [], tps: [] };
+  const ML_HIST = { rows: [], windows: [], requests: [], tflite: [] };
   function pushMetric(key, v) {
     const a = METRIC_HIST[key];
+    if (v == null) a.push(null);
+    else a.push(v);
+    if (a.length > 240) a.shift();
+  }
+  function pushMl(key, v) {
+    const a = ML_HIST[key];
     if (v == null) a.push(null);
     else a.push(v);
     if (a.length > 240) a.shift();
@@ -962,10 +1378,19 @@
     setPct("sMem", sysState.memory);
     q("sTemp").textContent = sysState.temperature != null ? sysState.temperature.toFixed(1) + "°C" : "—";
     const disk = sysState.disk;
-    q("sDisk").textContent = disk && disk.usedPercent != null ? disk.usedPercent.toFixed(1) + "%" : "—";
+    if (s.diskUsedPct != null) sysState.diskUsedPct = s.diskUsedPct;
+    const diskPct = sysState.diskUsedPct != null ? sysState.diskUsedPct : (disk && disk.usedPercent);
+    q("sDisk").textContent = diskPct != null ? diskPct.toFixed(1) + "%" : "—";
     q("sTps").textContent = sysState.tokensPerSecond != null ? sysState.tokensPerSecond.toFixed(1) : "—";
     q("sApm").textContent = sysState.requestsPerMinute != null ? String(sysState.requestsPerMinute) : "—";
     q("sAt").textContent = sysState.timestamp ? new Date(sysState.timestamp).toLocaleTimeString() : "—";
+    const teleEl = q("mlTeleTicker");
+    if (teleEl) {
+      const tv = [sysState.cpu, sysState.memory, diskPct];
+      teleEl.textContent = "[" + tv.map((v) => (v != null ? v.toFixed(0) + "%" : "—")).join(" · ") + "]" +
+        (sysState.sampleMs != null ? " · " + sysState.sampleMs.toFixed(1) + "ms" : "");
+      updateTeleTicker();
+    }
     pushMetric("cpu", sysState.cpu);
     pushMetric("mem", sysState.memory);
     pushMetric("temp", sysState.temperature);
@@ -995,6 +1420,8 @@
         modelMeta = m;
         $s("mName", m.name);
         $s("mQuant", m.quantization ?? "—");
+        $s("mCtx", m.contextSize != null ? String(m.contextSize) : "—");
+        $s("bModel", [m.name, m.quantization, m.contextSize != null ? "ctx " + m.contextSize : null].filter(Boolean).join(" · "));
         $s("mInstalled", String(m.installed));
         $s("mSize", fmtBytes(m.sizeBytes));
         $s("mAt", m.installedAt ?? "—");
@@ -1018,7 +1445,7 @@
     }
   }
 
-  let anRisk = null, anCfg = null, anMeta = null, anTrain = null, anBestData = null, anTrialHtml = "", cfgFormDirty = false;
+  let anRisk = null, anCfg = null, anMeta = null, anTrain = null, anBestData = null, anTrialHtml = "", cfgFormDirty = false, liveNn = null;
   async function loadAnalytics() {
     const hdrs = headers();
     if (!hdrs) return;
@@ -1030,6 +1457,8 @@
         (await fetch("/api/analytics/meta", { headers: hdrs })).json(),
       ]);
       anRisk = risk; anCfg = cfg; anTrain = train; anMeta = meta;
+      pushMl("rows", train.rows);
+      pushMl("tflite", train.tfliteBytes);
       renderAnalytics();
     } catch {
       chip("anLevel", "—");
@@ -1052,8 +1481,10 @@
     }
     // nn chip
     const nnLabel = risk.nnRisk || "—";
-    const nnEl = chip("anNnChip", "tf-lite " + nnLabel);
-    if (risk.nnRisk) nnEl.classList.add(risk.nnRisk === "high" ? "err" : risk.nnRisk === "normal" ? "ok" : "warn");
+    const nnT = liveNn && liveNn.label ? nnTxt(liveNn.label, liveNn.prob) : nnLabel;
+    const nnEl = chip("anNnChip", "tf-lite " + (liveNn && liveNn.ms != null ? nnT + " · " + liveNn.ms.toFixed(1) + "ms" : nnT));
+    if ((liveNn && liveNn.label || risk.nnRisk) === "high") nnEl.classList.add("err");
+    else if ((liveNn && liveNn.label || risk.nnRisk) === "normal") nnEl.classList.add("ok");
     $s("anRisk", risk.level ?? "no score yet");
     $s("anT2", risk.t2 != null ? risk.t2.toFixed(4) : "—");
     $s("anP", risk.pValue != null ? risk.pValue.toFixed(5) : "—");
@@ -1075,7 +1506,6 @@
     // config line
     const cfgParts = [];
     if (cfg.featureWindowSec) cfgParts.push("window " + cfg.featureWindowSec + "s");
-    if (cfg.contextWindows) cfgParts.push("ctx " + cfg.contextWindows);
     if (cfg.ewmaDecay != null) cfgParts.push("decay " + cfg.ewmaDecay);
     if (cfg.pcaComponents) cfgParts.push("pca " + cfg.pcaComponents);
     if (cfg.highZ) cfgParts.push("high " + cfg.highZ + "σ");
@@ -1144,6 +1574,572 @@
       '</div>';
     }).join("");
   }
+
+  /* ------------------------------------------------------------------ */
+  /* ML analytics page                                                   */
+  let mlCloud = [], mlHist = [], mlLat = [], mlRuns = [], mlModels = [], mlSel = null;
+  let ml3d = { yaw: 0.6, pitch: 0.5, zoom: 1, dims: [0, 1, 2], spinOn: true, spinning: false };
+  let mlProj = [], mlHover = null, mlF1Hist = [];
+  let mlAnimRaf = 0, mlReloadT = 0;
+  const ML_DIM_SETS = [[0, 1, 2], [1, 2, 3], [2, 0, 3], [0, 3, 1]];
+  function lastNum(a) { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return a[i]; return null; }
+  function getCtx(cv) {
+    if (!cv) return null;
+    const ctx = cv.getContext("2d");
+    const w = cv.clientWidth || cv.offsetWidth || 320, h = cv.clientHeight || cv.offsetHeight || 150;
+    const dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr) || !cv.width) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+  }
+  function renderDims() {
+    if (q("mlDimChip")) q("mlDimChip").textContent = ml3d.dims.map((i) => "PC" + (i + 1)).join("·");
+  }
+  function mergeCloud(prev, next, cap) {
+    const pr = Array.isArray(prev) ? prev : [];
+    if (!Array.isArray(next) || !next.length) return { cloud: pr, added: false };
+    const prevLast = pr.length ? pr[pr.length - 1].windowStart : null;
+    const nextLast = next[next.length - 1].windowStart;
+    if (prevLast && nextLast < prevLast) return { cloud: next, added: false };
+    if (next.length < pr.length - 5) return { cloud: next, added: false };
+    const seen = new Set(pr.map((x) => x.windowStart));
+    let added = false;
+    for (const r of next) if (!seen.has(r.windowStart)) { pr.push(r); added = true; }
+    const clipped = pr.slice(-(cap || 300));
+    return { cloud: clipped, added: added || clipped.length < pr.length };
+  }
+  async function loadMlPage() {
+    const hdrs = headers();
+    if (!hdrs) return;
+    try {
+      const [cloud, hist, lat, runs, models] = await Promise.all([
+        fetch("/api/analytics/pca/cloud?limit=300", { headers: hdrs }).then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/analytics/historic/windows?limit=200", { headers: hdrs }).then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/analytics/latency/history?limit=200", { headers: hdrs }).then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/analytics/training/runs?limit=20", { headers: hdrs }).then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/analytics/models", { headers: hdrs }).then((r) => (r.ok ? r.json() : [])),
+      ]);
+      mlCloud = mergeCloud(mlCloud, cloud, 300).cloud; mlHist = hist; mlLat = lat; mlRuns = runs; mlModels = models;
+      renderMlPage();
+    } catch {}
+  }
+  function pingCloud() {
+    const hdrs = headers();
+    if (!hdrs || document.body.dataset.view !== "ml-analytics") return;
+    fetch("/api/analytics/pca/cloud?limit=300", { headers: hdrs })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((cloud) => {
+        const { cloud: merged, added } = mergeCloud(mlCloud, cloud, 300);
+        mlCloud = merged;
+        if (added) { render3d(); renderBoxes(); }
+      })
+      .catch(() => {});
+  }
+  function renderMlPage() {
+    if (q("view-ml-analytics") && document.body.dataset.view !== "ml-analytics") return;
+    const risk = anRisk || {};
+    const train = anTrain || {};
+    renderDims();
+    $s("mlRisk", risk.level || "no score yet");
+    $s("mlT2", risk.t2 != null ? risk.t2.toFixed(4) : "—");
+    $s("mlP", risk.pValue != null ? risk.pValue.toFixed(5) : "—");
+    $s("mlMs", risk.computeMs != null ? risk.computeMs.toFixed(2) + "ms" : "—");
+    $s("mlNnMs", risk.nnLatencyMs != null ? risk.nnLatencyMs.toFixed(1) + "ms" : "—");
+    $s("mlNnMsx", risk.nnLatencyMs != null ? risk.nnLatencyMs.toFixed(1) + "ms" : "—");
+    $s("mlWin", String(risk.windowsScored ?? 0));
+    if (!risk.level || risk.level === "—") chip("mlLevel", "—");
+    else {
+      const el = chip("mlLevel", risk.level);
+      el.classList.remove("ok", "warn", "err");
+      el.classList.add(risk.level === "high" ? "err" : risk.level === "normal" ? "ok" : "warn");
+    }
+    const nnT2 = liveNn && liveNn.label ? nnTxt(liveNn.label, liveNn.prob) : (risk.nnRisk || "—");
+    const nnEl = chip("mlNnChip", "tf-lite " + (liveNn && liveNn.ms != null ? nnT2 + " · " + liveNn.ms.toFixed(1) + "ms" : nnT2));
+    const nnActive = (liveNn && liveNn.label || risk.nnRisk) || null;
+    if (nnActive) nnEl.classList.add(nnActive === "high" ? "err" : nnActive === "normal" ? "ok" : "warn");
+    chip("mlModelChip", train.modelActive ? "active" : "off");
+    render3d();
+    renderTs();
+    renderBoxes();
+    renderMlSpark();
+    renderMlTraining();
+    renderMlRuns();
+    renderMlModels();
+  }
+  function renderMlTraining() {
+    const train = anTrain || {};
+    const st = train.state || "idle";
+    const stChip = chip("mlTrainChip", st);
+    if (st === "running") stChip.classList.add("warn");
+    else if (train.error) stChip.classList.add("err");
+    else if (train.modelActive) stChip.classList.add("ok");
+    $s("mlTrainState", st === "running" ? "training (run " + train.run + ")" : train.error ? "error: " + String(train.error).slice(0, 200) : (train.modelActive ? "model active" : "idle"));
+    $s("mlTrainRows", String(train.rows ?? "—"));
+    $s("mlTrainMin", String(train.minRows ?? "—"));
+    $s("mlTrainRun", String(train.run ?? "—"));
+    $s("mlTrainTrials", String(train.trials ?? "—"));
+    $s("mlTrainEpochs", String(train.epochs ?? "—"));
+    $s("mlArtifacts", [
+      train.tfliteModel ? "tflite " + (train.tfliteBytes != null ? fmtBytes(train.tfliteBytes) : "") : null,
+      train.savedModel ? "savedmodel " + (train.modelBytes != null ? fmtBytes(train.modelBytes) : "") : null,
+    ].filter(Boolean).join(" · ") || "—");
+    const best = train.best || anBestData || null;
+    if (best && best.metrics) {
+      const m = best.metrics;
+      $s("mlBestModel", "F1 " + (m.f1 != null ? m.f1.toFixed(3) : "—") + " · acc " + (m.accuracy != null ? m.accuracy.toFixed(3) : "—") + " · P " + (m.precision != null ? m.precision.toFixed(3) : "—") + " · R " + (m.recall != null ? m.recall.toFixed(3) : "—"));
+    } else $s("mlBestModel", "—");
+    $s("mlTrainWm", train.trainedUpTo ? new Date(train.trainedUpTo).toLocaleString() : "—");
+    $s("mlTrainMeta", modelMetaBrief(train.modelMetadata) || "—");
+  }
+  function modelMetaBrief(meta) {
+    if (!meta) return "";
+    const arch = meta.architecture || {};
+    const h = meta.hparams || {};
+    const mm = meta.metrics || {};
+    const parts = [];
+    if (h.kind) parts.push(String(h.kind).toUpperCase());
+    if (arch.inputDim != null) parts.push("dim " + arch.inputDim);
+    if (arch.params != null) parts.push(Math.round(arch.params / 1000) + "k");
+    if (mm.f1 != null) parts.push("F1 " + mm.f1.toFixed(3));
+    if (meta.datasetRows != null) parts.push("rows " + meta.datasetRows);
+    if (meta.fineTuned != null) parts.push(meta.fineTuned ? "fine-tuned" : "fresh build");
+    if (meta.trainSeconds != null) parts.push(meta.trainSeconds.toFixed(1) + "s train");
+    return parts.join(" · ");
+  }
+  function renderMlRuns() {
+    const tb = q("mlRunsTable") && q("mlRunsTable").querySelector("tbody");
+    if (!tb) return;
+    if (!mlRuns.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="muted">no training runs yet — runs appear after the first auto-training</td></tr>';
+      return;
+    }
+    tb.innerHTML = mlRuns.slice(0, 20).map((r) => {
+      const m = r.metrics || {};
+      const st = r.state || "—";
+      return "<tr>" +
+        "<td>" + new Date(r.startedAt).toLocaleString() + "</td>" +
+        '<td><span class="chip ' + (r.error ? "err" : st === "done" ? "ok" : "warn") + '">' + escapeHtml(st) + "</span></td>" +
+        '<td class="num">' + (r.rows ?? "—") + "</td>" +
+        '<td class="num">' + (r.epochs ?? "—") + "</td>" +
+        '<td class="num">' + (m.f1 != null ? m.f1.toFixed(3) : "—") + "</td>" +
+        '<td class="num">' + (m.accuracy != null ? m.accuracy.toFixed(3) : "—") + "</td>" +
+        "<td>" + (r.best ? '<span class="chip ok">best</span>' : "—") + "</td>" +
+        '<td class="num">' + (r.seconds != null ? r.seconds.toFixed(1) : "—") + "</td>" +
+      "</tr>";
+    }).join("");
+    mlF1Hist = mlRuns.map((r) => (r.metrics && r.metrics.f1) || null).reverse();
+  }
+  function renderMlModels() {
+    const tb = q("mlModelsTable") && q("mlModelsTable").querySelector("tbody");
+    if (!tb) return;
+    chip("mlModelsChip", mlModels.length ? mlModels.length + " registered" : "none");
+    tb.innerHTML = mlModels.length
+      ? mlModels.map((m) => "<tr>" +
+          '<td class="num">' + m.id + "</td>" +
+          "<td>" + escapeHtml(m.name || "—") + "</td>" +
+          "<td>" + escapeHtml(m.kind || "—") + "</td>" +
+          "<td>" + (m.enabled ? '<span class="chip ok">enabled</span>' : '<span class="chip">disabled</span>') + "</td>" +
+          "<td>" + (m.createdAt ? new Date(m.createdAt).toLocaleString() : "—") + "</td>" +
+          "<td>" + (m.metadata && m.metadata.trainedUpTo ? new Date(m.metadata.trainedUpTo).toLocaleString() : "—") + "</td>" +
+          "<td>" + (modelMetaBrief(m.metadata) || "—") + "</td>" +
+        "</tr>").join("")
+      : '<tr><td colspan="7" class="muted">no models registered yet</td></tr>';
+  }
+  function computeProj() {
+    const [a, b, c] = ml3d.dims;
+    const pts = mlCloud.map((p) => ({ p, x: (p.pcs && p.pcs[a]) || 0, y: (p.pcs && p.pcs[b]) || 0, z: (p.pcs && p.pcs[c]) || 0 }));
+    if (!pts.length) { mlProj = []; return; }
+    const mn = (d) => Math.min(...pts.map((o) => o[d])), mx = (d) => Math.max(...pts.map((o) => o[d]));
+    const mid = (d) => (mn(d) + mx(d)) / 2;
+    const cx = mid("x"), cy = mid("y"), cz = mid("z");
+    const span = Math.max(mx("x") - mn("x"), mx("y") - mn("y"), mx("z") - mn("z"), 1e-6);
+    const cosY = Math.cos(ml3d.yaw), sinY = Math.sin(ml3d.yaw);
+    const cosX = Math.cos(ml3d.pitch), sinX = Math.sin(ml3d.pitch);
+    const w = (q("pca3d") ? q("pca3d").clientWidth : 640) || 640;
+    const h = (q("pca3d") ? q("pca3d").clientHeight : 340) || 340;
+    const k = (Math.min(w, h) * 0.38 * ml3d.zoom) / span;
+    mlProj = pts.map((o) => {
+      let x1 = (o.x - cx) * cosY - (o.z - cz) * sinY;
+      let z1 = (o.x - cx) * sinY + (o.z - cz) * cosY;
+      let y1 = (o.y - cy) * cosX - z1 * sinX;
+      let z2 = (o.y - cy) * sinX + z1 * cosX;
+      return {
+        p: o.p, d: z2,
+        px: w / 2 + x1 * k, py: h / 2 - y1 * k,
+        size: Math.abs(o.x), mag: Math.hypot(o.x, o.y, o.z),
+      };
+    });
+    mlProj.sort((p, qq) => qq.d - p.d);
+  }
+  const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
+  function parseHex(c) {
+    const n = parseInt(c.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function viridis(t) {
+    t = Math.max(0, Math.min(1, t));
+    const i = Math.min(VIRIDIS.length - 2, Math.floor(t * (VIRIDIS.length - 1)));
+    const f = t * (VIRIDIS.length - 1) - i;
+    const a = parseHex(VIRIDIS[i]), b = parseHex(VIRIDIS[i + 1]);
+    const c = a.map((v, k) => Math.round(v + (b[k] - v) * f));
+    return "rgb(" + c.join(",") + ")";
+  }
+  function render3d() {
+    const cv = q("pca3d");
+    if (!cv) return;
+    const { ctx, w, h } = getCtx(cv);
+    if (!mlCloud.length) {
+      ctx.fillStyle = "rgba(255,255,255,.3)";
+      ctx.font = "12px " + cssv("--mono");
+      ctx.fillText("no scored windows yet — the cloud builds as windows are scored", 12, 20);
+      $s("mlTooltip", "drag to rotate · wheel to zoom · hover to inspect");
+      return;
+    }
+    computeProj();
+    const cfg = anCfg || {};
+    const watch = parseFloat(cfg.watchZ) || 1.0, high = parseFloat(cfg.highZ) || 1.5;
+    const [a, b] = ml3d.dims;
+    // light gridlines
+    ctx.strokeStyle = "rgba(255,255,255," + (document.body.classList.contains("compact") ? "0.05" : "0.08") + ")";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 8; i++) {
+      const gx = (w / 8) * i, gy = (h / 8) * i;
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+    }
+    const colFor = (r, mag) => {
+      if (r === "high" || r === "watch") return r === "high" ? "#e04a4a" : "#d9a404";
+      return viridis(mag / high);
+    };
+    let hoverPt = null, hoverDist = 14;
+    for (const o of mlProj) {
+      const r = o.p.risk || "normal";
+      const zs = o.p.z || [];
+      const mag = zs.length ? Math.max(0, ...zs.map(Math.abs)) : (typeof o.p.t2 === "number" ? o.p.t2 / 3 : 0);
+      const size = Math.max(1.6, Math.min(9, 2 + (o.size / (high * 1.2)) * 3.4));
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = colFor(r, mag);
+      ctx.beginPath();
+      ctx.arc(o.px, o.py, size, 0, Math.PI * 2);
+      ctx.fill();
+      // raw |z| halo
+      if (mag >= high) {
+        ctx.strokeStyle = "#e04a4a";
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.arc(o.px, o.py, size + 2.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      if (mlHover) {
+        const d = Math.hypot(o.px - mlHover.mx, o.py - mlHover.my);
+        if (d < hoverDist) { hoverDist = d; hoverPt = o; }
+      }
+    }
+    // selected pin
+    if (mlSel) {
+      const s = mlProj.filter((o) => o.p.windowStart === mlSel.windowStart)[0];
+      if (s) {
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(s.px, s.py, s.size + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    // axis hint
+    ctx.fillStyle = "rgba(255,255,255,.35)";
+    ctx.font = "10px " + cssv("--mono");
+    ctx.fillText("x:PC" + (a + 1) + "  y:PC" + (b + 1) + "  z:depth", 12, h - 10);
+    // tooltip
+    const n = mlCloud.length;
+    const head = "n = " + n + " scored windows · PC" + (a + 1) + "·PC" + (b + 1) + " view" + (mlSel ? " · pinned" : "");
+    const t = hoverPt || (mlSel && mlProj.filter((o) => o.p.windowStart === mlSel.windowStart)[0]);
+    if (t) {
+      const p = t.p;
+      const names = p.featureNames || [];
+      const zms = (p.z || []).map(Math.abs).filter(Boolean);
+      const zmax = zms.length ? Math.max(...zms).toFixed(2) : "—";
+      const lines = [
+        head,
+        new Date(p.windowStart).toLocaleString() + "  ·  " + (p.risk || "normal").toUpperCase() +
+          "  ·  T² " + (p.t2 != null ? p.t2.toFixed(2) : "—") + "  ·  p " + (p.pValue != null ? p.pValue.toExponential(2) : "—") +
+          "  ·  zmax " + zmax +
+          "  ·  " + (p.computeMs != null ? p.computeMs.toFixed(1) + "ms" : "") + (p.nnMs != null ? " / nn " + p.nnMs.toFixed(1) + "ms" : ""),
+      ];
+      const feats = (p.features || []).map((v, i) => (v != null ? (names[i] || "f" + (i + 1)) + "=" + (+v).toFixed(2) : null)).filter(Boolean).join("  ");
+      const z = (p.z || []).map((v, i) => (v != null ? (names[i] || "f" + (i + 1)) + " z=" + (+v).toFixed(2) : null)).filter(Boolean).join("  ");
+      if (feats) lines.push(feats);
+      if (z) lines.push(z);
+      $s("mlTooltip", lines.join("\n"));
+    } else {
+      $s("mlTooltip", head);
+    }
+  }
+  function qnt(sorted, p) {
+    const idx = (sorted.length - 1) * p, lo = Math.floor(idx), hi = Math.ceil(idx);
+    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+  }
+  function shortLabel(n) {
+    return String(n || "f").replace(/log1p_/g, "").replace(/([A-Z])/g, " $1").trim().slice(0, 12);
+  }
+  function renderTs() {
+    const cv = q("barTs");
+    if (!cv) return;
+    const { ctx, w, h } = getCtx(cv);
+    const hist = mlHist.slice(-120);
+    if (!hist.length) {
+      ctx.fillStyle = "rgba(255,255,255,.3)";
+      ctx.font = "12px " + cssv("--mono");
+      ctx.fillText("no scored history yet", 12, 20);
+      $s("mlTsLabel", "Hotelling T² per window — fills as windows are scored");
+      return;
+    }
+    const dr = hist.map((x) => x.drift || 0);
+    const mx = Math.max(...dr, 1e-6);
+    const bw = w / hist.length;
+    hist.forEach((x, i) => {
+      const bh = Math.max(1, (x.drift / mx) * (h - 22));
+      ctx.fillStyle = x.risk === "high" ? "#e04a4a" : x.risk === "watch" ? "#d9a404" : cssv("--ac-model");
+      ctx.fillRect(i * bw + 1, h - 12 - bh, Math.max(2, bw - 2), bh);
+    });
+    ctx.strokeStyle = "rgba(255,255,255,.15)";
+    ctx.beginPath();
+    ctx.moveTo(0, h - 12); ctx.lineTo(w, h - 12);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.4)";
+    ctx.font = "10px " + cssv("--mono");
+    ctx.fillText("max t² " + mx.toFixed(2), 4, 12);
+    const lt = hist[hist.length - 1];
+    const counts = hist.reduce((o, x) => { o[x.risk] = (o[x.risk] || 0) + 1; return o; }, {});
+    $s("mlTsLabel", "latest " + (lt.risk || "?") + " · t² " + (lt.drift || 0).toFixed(3) + " · " + new Date(lt.timestamp).toLocaleString() +
+      " · " + hist.length + " windows · " + (counts.normal || 0) + " normal / " + (counts.watch || 0) + " watch / " + (counts.high || 0) + " high");
+    renderMlSpark();
+  }
+  function renderBoxes() {
+    const cv = q("boxFeat");
+    if (!cv) return;
+    const { ctx, w, h } = getCtx(cv);
+    const rows = mlCloud;
+    if (!rows.length) {
+      ctx.fillStyle = "rgba(255,255,255,.3)";
+      ctx.font = "12px " + cssv("--mono");
+      ctx.fillText("no scored windows yet — box plots fill from the PCA cloud", 12, 20);
+      $s("mlBoxLabel", "");
+      return;
+    }
+    const last = rows[rows.length - 1];
+    const names = last.featureNames || [];
+    const dim = names.length || 6;
+    const per = [];
+    for (let j = 0; j < dim; j++) {
+      const vals = [];
+      for (const r of rows) {
+        let a = r.z || r.features || [];
+        if (a.length > dim) a = a.slice(0, dim);
+        const v = a[j];
+        if (v != null && !isNaN(v)) vals.push(+v);
+      }
+      per.push(vals.length ? vals.sort((p, qq) => p - qq) : null);
+    }
+    const flat = per.filter(Boolean).flat().map(Math.abs);
+    const Z = Math.min(Math.max(3, ...flat) + 0.8, 8);
+    const slot = w / dim;
+    const few = dim <= 6;
+    const topPad = 10, labelH = few ? 58 : 50;
+    const cy = topPad + (h - topPad - labelH) / 2;
+    const scale = (h - topPad - labelH - 8) / (2 * Z);
+    const toY = (z) => cy - z * scale;
+    const cfg = anCfg || {};
+    const watch = parseFloat(cfg.watchZ) || 1.0, high = parseFloat(cfg.highZ) || 1.5;
+    // integer-sigma gridlines + numeric y labels
+    ctx.strokeStyle = "rgba(255,255,255,.10)";
+    ctx.fillStyle = "rgba(255,255,255,.38)";
+    ctx.font = (few ? "10" : "9") + "px " + cssv("--mono");
+    for (let z = -Math.ceil(Z); z <= Math.ceil(Z); z++) {
+      const y = toY(z);
+      if (y > h - labelH + 4 || y < topPad - 4) continue;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      ctx.fillText((z > 0 ? "+" : "") + z + "σ", 3, y + 3);
+    }
+    // watch/high reference lines
+    ctx.strokeStyle = "rgba(220,160,60,.35)";
+    ctx.setLineDash([4, 3]);
+    [watch, -watch, high, -high].forEach((z) => {
+      if (z < -Z || z > Z) return;
+      ctx.beginPath(); ctx.moveTo(0, toY(z)); ctx.lineTo(w, toY(z)); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(220,160,60,.85)";
+    ctx.font = (few ? "11" : "10") + "px " + cssv("--mono");
+    ctx.fillText("high ±" + high + "σ", w - 74, toY(high) - 3);
+    const lastArr = last.z && last.z.length >= dim ? last.z : (last.features || []).slice(0, dim);
+    const curZ = lastArr && lastArr.length ? lastArr : null;
+    const curVals = (last.features && last.features.length >= dim) ? last.features : null;
+    per.forEach((d, j) => {
+      if (!d) return;
+      const x = j * slot + slot / 2;
+      const q1 = qnt(d, 0.25), med = qnt(d, 0.5), q3 = qnt(d, 0.75);
+      const iqr = q3 - q1, wlo = q1 - 1.5 * iqr, whi = q3 + 1.5 * iqr;
+      const halfW = Math.min(24, Math.max(5, slot * 0.40));
+      ctx.strokeStyle = "rgba(255,255,255,.45)";
+      ctx.beginPath(); ctx.moveTo(x, toY(Math.max(wlo, -Z))); ctx.lineTo(x, toY(Math.min(whi, Z))); ctx.stroke();
+      ctx.fillStyle = "rgba(86,156,214,.18)";
+      ctx.fillRect(x - halfW, toY(q3), halfW * 2, Math.max(1, toY(q1) - toY(q3)));
+      ctx.strokeStyle = cssv("--accent");
+      ctx.strokeRect(x - halfW, toY(q3), halfW * 2, Math.max(1, toY(q1) - toY(q3)));
+      ctx.strokeStyle = "rgba(255,255,255,.7)";
+      ctx.beginPath(); ctx.moveTo(x - halfW, toY(med)); ctx.lineTo(x + halfW, toY(med)); ctx.stroke();
+      const dotR = few ? 2.2 : 1.5;
+      for (const v of d) {
+        if (v < wlo || v > whi) {
+          if (Math.abs(v) > Z) {
+            // clipped extreme: pin a risk-colored triangle at the plot edge
+            const up = v > 0;
+            const yE = up ? toY(Z) : toY(-Z);
+            ctx.fillStyle = Math.abs(v) >= high ? "#e04a4a" : "#d9a404";
+            ctx.beginPath();
+            ctx.moveTo(x, up ? yE : yE + 5);
+            ctx.lineTo(x - 4, up ? yE + 5 : yE);
+            ctx.lineTo(x + 4, up ? yE + 5 : yE);
+            ctx.closePath(); ctx.fill();
+          } else {
+            ctx.fillStyle = Math.abs(v) >= high ? "#e04a4a" : "rgba(255,255,255,.5)";
+            ctx.beginPath(); ctx.arc(x, toY(v), dotR, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      }
+      // x label — upright name + latest raw value under it when only a few active features
+      if (few) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(255,255,255,.8)";
+        ctx.font = "11px " + cssv("--mono");
+        ctx.fillText(shortLabel(names[j]), x, h - 26);
+        const vRaw = curVals && curVals[j] != null ? (+curVals[j]).toFixed(2) : null;
+        ctx.font = "10px " + cssv("--mono");
+        ctx.fillStyle = curZ && curZ[j] != null
+          ? (Math.abs(+curZ[j]) >= high ? "#e04a4a" : Math.abs(+curZ[j]) >= watch ? "#d9a404" : "rgba(255,255,255,.55)")
+          : "rgba(255,255,255,.3)";
+        ctx.fillText(vRaw != null ? vRaw : "—", x, h - 10);
+      } else {
+        ctx.save();
+        ctx.translate(x - 4, h - 8);
+        ctx.rotate(-Math.PI / 4);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "rgba(255,255,255,.65)";
+        ctx.font = "10px " + cssv("--mono");
+        ctx.fillText(shortLabel(names[j]), 0, 0);
+        ctx.restore();
+      }
+      // current window marker
+      if (curZ && curZ[j] != null) {
+        const y = toY(+curZ[j]);
+        ctx.fillStyle = Math.abs(+curZ[j]) >= high ? "#e04a4a" : Math.abs(+curZ[j]) >= watch ? "#d9a404" : "#ffffff";
+        ctx.beginPath();
+        ctx.moveTo(x, y - 4); ctx.lineTo(x + 3.5, y); ctx.lineTo(x, y + 4); ctx.lineTo(x - 3.5, y);
+        ctx.closePath(); ctx.fill();
+      }
+    });
+    $s("mlBoxLabel", "z per active feature (" + dim + ") across " + rows.length + " cloud windows · watch ±" + watch + "σ · high ±" + high + "σ · scale capped ±8σ · value under name = latest raw · white ♦ = latest z · ▲ = clipped extreme");
+  }
+  function renderMlSpark() {
+    const t2 = mlHist.map((x) => (x.drift != null ? +x.drift : null));
+    const cm = mlLat.map((x) => x.computeMs);
+    const nn = mlLat.map((x) => x.nnMs);
+    const f1 = mlF1Hist;
+    const rows = mlRuns.map((r) => r.rows);
+    const lv = (a) => (lastNum(a) != null ? (+lastNum(a)).toFixed(1) : "—");
+    $s("mlT2Val", lv(t2));
+    $s("mlCmMs", lv(cm));
+    $s("mlNnMsx", lv(nn));
+    $s("mlF1", lastNum(f1) != null ? (+lastNum(f1)).toFixed(3) : "—");
+    $s("mlRows", rows.length ? String(lastNum(rows)) : "—");
+    drawSpark("spT2", t2, cssv("--ac-stream"));
+    drawSpark("spCm", cm, cssv("--ac-host"));
+    drawSpark("spNn", nn, cssv("--ac-model"));
+    drawSpark("spF1", f1, cssv("--ac-pg"));
+    drawSpark("spRows", rows, cssv("--ac-wh"));
+  }
+  function mlReload(skip) {
+    if (document.body.dataset.view !== "ml-analytics") return;
+    if (skip) {
+      renderMlPage();
+      pingCloud();
+    }
+    clearTimeout(mlReloadT);
+    mlReloadT = setTimeout(loadMlPage, 4000);
+  }
+  function startMlAnim() {
+    cancelAnimationFrame(mlAnimRaf);
+    const frame = () => {
+      if (!ml3d.spinning || document.body.dataset.view !== "ml-analytics") return;
+      ml3d.yaw += 0.0045;
+      render3d();
+      mlAnimRaf = requestAnimationFrame(frame);
+    };
+    mlAnimRaf = requestAnimationFrame(frame);
+  }
+
+  const mlCv = q("pca3d");
+  if (mlCv) {
+    const pick = (ev) => {
+      const rect = mlCv.getBoundingClientRect();
+      return { mx: ev.clientX - rect.left, my: ev.clientY - rect.top };
+    };
+    mlCv.addEventListener("mousemove", (ev) => {
+      mlHover = mlCv.style.cursor === "grabbing" ? mlHover : pick(ev);
+      render3d();
+    });
+    mlCv.addEventListener("mouseleave", () => { mlHover = null; render3d(); });
+    mlCv.addEventListener("click", (ev) => {
+      const m = pick(ev);
+      let best = null, bd = 14;
+      for (const o of mlProj) {
+        const d = Math.hypot(o.px - m.mx, o.py - m.my);
+        if (d < bd) { bd = d; best = o; }
+      }
+      mlSel = best ? best.p : null;
+      render3d();
+    });
+    mlCv.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      ml3d.zoom = Math.max(0.4, Math.min(4, ml3d.zoom * (ev.deltaY > 0 ? 1 / 1.12 : 1.12)));
+      render3d();
+    }, { passive: false });
+    let dragging = false, lastX = 0, lastY = 0;
+    mlCv.addEventListener("mousedown", (ev) => {
+      dragging = true; mlCv.style.cursor = "grabbing";
+      lastX = ev.clientX; lastY = ev.clientY;
+    });
+    window.addEventListener("mousemove", (ev) => {
+      if (!dragging) return;
+      ml3d.yaw += (ev.clientX - lastX) * 0.011;
+      ml3d.pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, ml3d.pitch + (ev.clientY - lastY) * 0.011));
+      lastX = ev.clientX; lastY = ev.clientY;
+      render3d();
+    });
+    window.addEventListener("mouseup", () => { dragging = false; mlCv.style.cursor = "crosshair"; });
+  }
+  if (q("btnDimCycle")) q("btnDimCycle").addEventListener("click", () => {
+    const cur = ML_DIM_SETS.findIndex((s) => s.join() === ml3d.dims.join());
+    ml3d.dims = ML_DIM_SETS[(cur + 1) % ML_DIM_SETS.length];
+    renderDims(); render3d();
+  });
+  if (q("btnRot")) q("btnRot").addEventListener("click", () => {
+    ml3d.spinOn = !ml3d.spinOn;
+    ml3d.spinning = ml3d.spinOn;
+    q("btnRot").textContent = "Rotate: " + (ml3d.spinOn ? "on" : "off");
+    startMlAnim();
+  });
+  if (q("btnReset3d")) q("btnReset3d").addEventListener("click", () => {
+    ml3d.yaw = 0.6; ml3d.pitch = 0.5; ml3d.zoom = 1; ml3d.dims = [0, 1, 2]; mlSel = null; mlHover = null;
+    renderDims(); render3d();
+  });
+  setInterval(() => { if (document.body.dataset.view === "ml-analytics") { loadAnalytics(); loadMlPage(); } }, 30000);
 
   const modelRestartState = { inFlight: false, pollId: null };
   function setModelAction(text, cls) {
@@ -1236,16 +2232,41 @@
       refresh();
     }
   }
+  async function train(mode, btn) {
+    const hdrs = headers();
+    if (!hdrs) { setModelAction("Enter the admin API key first", "err"); return; }
+    btn.disabled = true;
+    setModelAction("training (" + mode + ")…", "warn");
+    try {
+      const r = await fetch("/api/analytics/training/start", {
+        method: "POST", headers: hdrs, body: JSON.stringify({ mode }),
+      });
+      const body = await r.json();
+      if (r.ok) {
+        setModelAction("training (" + mode + ") -> HTTP " + r.status + ": " + JSON.stringify(body), "ok");
+        setTimeout(clearModelAction, 2500);
+      } else {
+        setModelAction("training (" + mode + ") -> HTTP " + r.status + ": " + (body.detail || body.error || JSON.stringify(body)), "err");
+      }
+    } catch (e) {
+      setModelAction("training failed: " + e.message, "err");
+    } finally {
+      btn.disabled = false;
+      refresh();
+    }
+  }
   q("btnRestart").addEventListener("click", restartModel);
   q("btnUpdate").addEventListener("click", () => act("/api/model/update", q("btnUpdate")));
   q("btnSyncRestart").addEventListener("click", restartModel);
   q("btnSyncUpdate").addEventListener("click", () => act("/api/model/update", q("btnSyncUpdate")));
   q("btnTrainNow").addEventListener("click", () => act("/api/analytics/training/start", q("btnTrainNow")));
+  q("btnTrainWm").addEventListener("click", () => train("watermark", q("btnTrainWm")));
+  q("btnTrainFull").addEventListener("click", () => train("full", q("btnTrainFull")));
   q("btnRebaseline").addEventListener("click", () => act("/api/analytics/rebaseline", q("btnRebaseline")));
   q("btnInferNow").addEventListener("click", syncInfer);
   q("btnMetaNow").addEventListener("click", syncMeta);
   q("btnSaveCfg").addEventListener("click", saveCfg);
-  ["cfgIngest","cfgDecay","cfgCtx","cfgPca","cfgWatch","cfgHigh","cfgCron","cfgMin","cfgEpochs","cfgBatch","cfgTrials","cfgVal","cfgSeed"].forEach((id) => {
+  ["cfgIngest","cfgDecay","cfgPca","cfgWatch","cfgHigh","cfgCron","cfgMin","cfgEpochs","cfgBatch","cfgTrials","cfgVal","cfgSeed"].forEach((id) => {
     const el = q(id); if (el) el.addEventListener("input", () => { cfgFormDirty = true; });
   });
   async function syncInfer() {
@@ -1257,7 +2278,11 @@
       const r = await fetch("/api/analytics/infer", { method: "POST", headers: hdrs });
       const body = await r.json();
       if (r.ok) {
-        if (body.nnRisk) { chip("anNnChip", "tf-lite " + body.nnRisk); }
+        if (body.nnRisk) {
+          liveNn = { label: body.nnRisk, prob: body.nnProb, ms: body.nnLatencyMs };
+          setNnChips(body.nnRisk, body.nnProb, body.nnLatencyMs);
+          updateTeleTicker();
+        }
         if (anMeta && anMeta.latency) { anMeta.latency.lastNnMs = body.nnLatencyMs; anMeta.latency.nnRuns = (anMeta.latency.nnRuns || 0) + 1; }
         setModelAction("inference " + body.nnRisk + " in " + (body.nnLatencyMs != null ? body.nnLatencyMs.toFixed(1) + "ms" : "?"), "ok");
         renderAnalytics();
@@ -1285,7 +2310,7 @@
   function populateCfgForm(cfg, meta) {
     q("cfgIngest").checked = meta.ingestEnabled !== false;
     q("cfgDecay").value = cfg.ewmaDecay ?? "";
-    q("cfgCtx").value = cfg.contextWindows ?? "";
+    q("cfgCtxInfo").value = modelMeta && modelMeta.contextSize ? modelMeta.contextSize + " tokens · llama.cpp --ctx-size" : "—";
     q("cfgPca").value = cfg.pcaComponents ?? "";
     q("cfgWatch").value = cfg.watchZ ?? "";
     q("cfgHigh").value = cfg.highZ ?? "";
@@ -1314,7 +2339,6 @@
     const patch = { featureFilter: [] };
     patch.ingestEnabled = q("cfgIngest").checked;
     patch.ewmaDecay = parseFloat(q("cfgDecay").value) || undefined;
-    patch.contextWindows = parseInt(q("cfgCtx").value) || undefined;
     patch.pcaComponents = parseInt(q("cfgPca").value) || undefined;
     patch.watchZ = parseFloat(q("cfgWatch").value) || undefined;
     patch.highZ = parseFloat(q("cfgHigh").value) || undefined;
@@ -1349,7 +2373,7 @@
         setTimeout(clearModelAction, 3500);
       } else setModelAction("save failed " + r.status + ": " + (body.detail || body.error || JSON.stringify(body)), "err");
     } catch (e) { setModelAction("save failed: " + e.message, "err"); }
-    finally { q("btnSaveCfg").disabled = false; refresh(); }
+    finally { q("btnSaveCfg").disabled = false; refresh(); mlReload(false); }
   }
   const syncResults = {};
   let whSql = null, whRedis = null, whRawKind = "windows";
@@ -1362,6 +2386,8 @@
         fetch("/api/analytics/warehouse/redis", { headers: hdrs }).then((x) => (x.ok ? x.json() : null)),
       ]);
       whSql = s; whRedis = r;
+      pushMl("windows", s && s.windows);
+      pushMl("requests", s && s.requests);
       renderWarehouseConn();
       renderPipelines();
     } catch {}
@@ -1411,6 +2437,14 @@
     } catch (e) { $s("sqlStatus", "failed: " + e.message); }
     finally { q("btnSqlRun").disabled = false; }
   }
+  function fmtFeats(feats, names, z) {
+    if (!feats || !feats.length) return "—";
+    const n = z ? "z" : "";
+    return feats.map((v, i) => {
+      const nm = (names && names[i]) || "f" + (i + 1);
+      return nm + n + "=" + (typeof v === "number" ? (+v).toFixed(3) : String(v));
+    }).join(" ");
+  }
   async function loadRaw(kind, limit) {
     const hdrs = headers();
     if (!hdrs) return;
@@ -1423,14 +2457,15 @@
       if (!r.ok) { $s("whRawStatus", "error: " + (body.detail || JSON.stringify(body))); return; }
       chip("whRawKind", kind);
       const cols = kind === "windows"
-        ? ["id", "windowStart", "features[10]", "risk", "t2", "pValue", "computeMs", "createdAt"]
-        : ["id", "startedAt", "features[6]", "error"];
+        ? ["id", "windowStart", "features", "z", "risk", "t2", "pValue", "computeMs", "createdAt"]
+        : ["id", "startedAt", "features", "status"];
       const rows = (body || []).map((rec) => kind === "windows"
-        ? [String(rec.id), new Date(rec.windowStart).toLocaleString(), rec.features ? "[" + rec.features.join(", ") + "]" : null,
+        ? [String(rec.id), new Date(rec.windowStart).toLocaleString(),
+           fmtFeats(rec.features, rec.featureNames), fmtFeats(rec.z, rec.featureNames, true),
            rec.risk, rec.t2 != null ? rec.t2.toFixed(3) : null, rec.pValue != null ? rec.pValue.toFixed(4) : null,
            rec.computeMs != null ? rec.computeMs.toFixed(1) + "ms" : null, new Date(rec.createdAt).toLocaleTimeString()]
-        : [String(rec.id), new Date(rec.startedAt).toLocaleString(), rec.features ? "[" + rec.features.join(", ") + "]" : null,
-           rec.error ? "error" : "ok"]);
+        : [String(rec.id), new Date(rec.startedAt).toLocaleString(),
+           fmtFeats(rec.features, rec.featureNames), rec.error ? "error" : "ok"]);
       renderResultTable({ columns: cols, rows, rowCount: rows.length, truncated: false }, "whRawOut");
       $s("whRawStatus", (rows.length || 0) + " raw rows");
     } catch (e) { $s("whRawStatus", "failed: " + e.message); }
@@ -1496,6 +2531,13 @@
         const r = await fetch("/api/analytics/warehouse/redis", { headers: hdrs });
         const b = await r.json();
         return { ok: r.ok && b.available !== false, note: b.available ? (b.keys || []).length + " keys" : "not available", data: b };
+      } },
+    { id: "mlm", name: "ml artifact store", kind: "connection", needKey: true, run: async (hdrs) => {
+        const r = await fetch("/api/analytics/meta", { headers: hdrs });
+        const b = await r.json().catch(() => ({}));
+        if (!r.ok) return { ok: false, note: "http " + r.status, data: null };
+        const m = b.model || {};
+        return { ok: true, note: m.active ? (m.name || "model") + " active · " + fmtBytes(m.tfliteBytes) : "no trained model yet", data: b };
       } },
     { id: "p_inf", name: "llama inference", kind: "pipeline", needKey: true, run: async (hdrs) => {
         const s = await (await fetch("/api/status", { headers: hdrs })).json();
@@ -1584,6 +2626,7 @@
     oc: ["cOc", "cOcLat", "cOcSync"],
     whsql: ["cWhSql", "cWhSqlLat", "cWhSqlSync"],
     whredis: ["cWhRedis", "cWhRedisLat", "cWhRedisSync"],
+    mlm: ["cMlm", "cMlmLat", "cMlmSync"],
   };
   function renderConnections() {
     const meta = modelMeta || {};
@@ -1620,7 +2663,34 @@
       $s("cWhRedisMem", wred.memoryBytes != null ? fmtBytes(wred.memoryBytes) : "—");
       chip("cWhRedisAof", wred.persistence ? "on" : "off");
     }
+    const mlm = syncResults.mlm?.data;
+    if (mlm) {
+      const m = mlm.model || {};
+      chip("cMlm", m.active ? "ready" : "missing");
+      $s("cMlmModel", m.active ? (m.name || "model") + " active" : "no trained model");
+      $s("cMlmDir", (anCfg && anCfg.mlDir) || "—");
+      $s("cMlmFiles", [
+        m.tfliteBytes != null ? "tflite " + fmtBytes(m.tfliteBytes) : null,
+        m.kerasBytes != null ? "savedmodel " + fmtBytes(m.kerasBytes) : null,
+      ].filter(Boolean).join(" · ") || "—");
+    }
   }
+
+  document.querySelectorAll(".mini-sync[data-c]").forEach((b) => b.addEventListener("click", async () => {
+    const c = CHECKS.find((x) => x.id === b.dataset.c);
+    if (!c) return;
+    const hdrs = headers();
+    const ikey = (iKeyInput.value || localStorage.getItem("inferenceKey") || "").trim();
+    if (c.needKey && !hdrs) { b.textContent = "key"; setTimeout(() => { b.textContent = "sync"; }, 1500); return; }
+    if (c.needInference && !ikey) { b.textContent = "key"; setTimeout(() => { b.textContent = "sync"; }, 1500); return; }
+    b.disabled = true; b.textContent = "…";
+    const r = await runCheck(c, hdrs, ikey);
+    syncResults[c.id] = { ...r, when: Date.now() };
+    b.disabled = false; b.textContent = "sync";
+    renderConnections();
+    renderPipelines();
+    renderStatusbar({});
+  }));
 
   function llamaEndpoint(args) {
     const h = (args || "").match(/--host\s+(\S+)/);
@@ -1667,9 +2737,19 @@
       $s("pWhRaw", (wsql.windows ?? 0) + " windows · " + (wsql.requests ?? 0) + " requests" + (wsql.latestWindowStart ? " · latest " + new Date(wsql.latestWindowStart).toLocaleTimeString() : ""));
     }
     $s("pWhRedis", wred != null ? (wred.available ? (wred.keys || []).length + " keys · " + (wred.memoryBytes != null ? fmtBytes(wred.memoryBytes) : "?") + (wred.persistence ? " · aof" : " · no-aof") : "n/a") : "—");
+    if (wsql) $s("pWhDb", wsql.path ?? "—");
+    if (anTrain) {
+      chip("pMlStatus", anTrain.state === "running" ? "training" : (anTrain.modelActive ? "active" : "idle"));
+      $s("pMlDir", (anCfg && anCfg.mlDir) || "—");
+      $s("pMlModel", (anTrain.modelActive ? "tflite " : "no model ") + (anTrain.tfliteBytes != null ? fmtBytes(anTrain.tfliteBytes) : ""));
+      $s("pMlWm", anTrain.trainedUpTo ? new Date(anTrain.trainedUpTo).toLocaleString() : "—");
+      $s("pMlTrials", String(anTrain.trials ?? "—"));
+      $s("pMlEpochs", String(anTrain.epochs ?? "—"));
+      $s("pMlNext", anMeta && anMeta.nextRun ? new Date(anMeta.nextRun).toLocaleString() : "—");
+    }
   }
   function wirePipeNotes() {
-    ["inference", "update", "streams", "warehouse"].forEach((id) => {
+    ["inference", "update", "streams", "warehouse", "ml"].forEach((id) => {
       const el = q("pnote-" + id);
       el.value = localStorage.getItem("pipenote-" + id) || "";
       el.addEventListener("input", () => localStorage.setItem("pipenote-" + id, el.value));
@@ -1690,15 +2770,36 @@
     if (meta.sizeBytes) $s("stModelSize", fmtBytes(meta.sizeBytes));
     if (meta.installedAt) $s("stModelAt", meta.installedAt);
     if (meta.sha256) $s("stModelSha", meta.sha256.slice(0, 16) + "…");
+    if (anCfg && anCfg.mlDir) $s("stMlDir", anCfg.mlDir);
+    if (whSql && whSql.path) $s("stWhPath", whSql.path);
+    if (whSql) {
+      if (whSql.tables) $s("stTables", whSql.tables.map((t) => t.table + ":" + t.rows).join(" · "));
+      if (whSql.windows != null) $s("stWindows", whSql.windows + " raw · " + ((anTrain && anTrain.rows != null) ? anTrain.rows + " labeled" : "—"));
+      if (whSql.requests != null) $s("stRequests", whSql.requests);
+      if (whSql.sizeBytes) $s("stDbSize", fmtBytes(whSql.sizeBytes));
+      if (whSql.latestWindowStart) $s("stLatestWin", new Date(whSql.latestWindowStart).toLocaleString() + (whSql.latestRisk ? " · risk " + whSql.latestRisk : ""));
+    }
+    if (anTrain) {
+      const arts = [];
+      if (anTrain.savedModel) arts.push(anTrain.savedModel.split("/").pop() + (anTrain.modelBytes ? " (" + fmtBytes(anTrain.modelBytes) + ")" : ""));
+      if (anTrain.tfliteModel) arts.push(anTrain.tfliteModel.split("/").pop() + (anTrain.tfliteBytes ? " (" + fmtBytes(anTrain.tfliteBytes) + ")" : ""));
+      $s("stTrainFiles", arts.join(" · ") || "none trained yet");
+    }
+    if (whRedis) $s("stRedisCopy", whRedis.available ? (whRedis.keys || []).length + " keys · " + fmtBytes(whRedis.memoryBytes || 0) + (whRedis.persistence ? " (AOF)" : "") : "not available");
   }
 
   let LOG_LEVEL = "all";
+  let LOG_SOURCE = "all";
+  const logBuffer = [];
   let historyLoaded = false;
   let historyLoading = false;
   function logLevelPass(level) {
     if (LOG_LEVEL === "all") return true;
     if (LOG_LEVEL === "error") return level === "error";
     return level === "warn" || level === "error";
+  }
+  function logSourcePass(src) {
+    return LOG_SOURCE === "all" || src === LOG_SOURCE;
   }
   async function loadLogHistory() {
     if (historyLoaded || historyLoading) return;
@@ -1707,21 +2808,39 @@
     historyLoading = true;
     try {
       const r = await (await fetch("/api/logs", { headers: hdrs })).json();
-      for (const e of r.entries || []) appendLog("log", e.msg, e.level);
+      for (const e of r.entries || []) {
+        appendLog("log", e.msg, e.level);
+        appendStream("log", e.msg, e.level);
+        routeLogLine(e.msg);
+      }
       historyLoaded = true;
     } catch {}
     historyLoading = false;
   }
+  function renderLogFromBuffer() {
+    const log = q("log");
+    const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    log.textContent = "";
+    for (const en of logBuffer) {
+      if (!logLevelPass(en.level)) continue;
+      if (!logSourcePass(en.src)) continue;
+      appendEvt(log, en.type, en.text, en.level, en.reqId, 400);
+    }
+    if (nearBottom) log.scrollTop = log.scrollHeight;
+  }
   function clearLogForFilter() {
-    q("log").textContent = "";
-    historyLoaded = false;
-    loadLogHistory();
+    renderLogFromBuffer();
   }
   q("logFilters").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    LOG_LEVEL = b.dataset.level;
-    q("logFilters").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+    if (b.dataset.level !== undefined) {
+      LOG_LEVEL = b.dataset.level;
+      q("logFilters").querySelectorAll("[data-level]").forEach((x) => x.classList.toggle("active", x === b));
+    } else if (b.dataset.source !== undefined) {
+      LOG_SOURCE = b.dataset.source;
+      q("logFilters").querySelectorAll("[data-source]").forEach((x) => x.classList.toggle("active", x === b));
+    }
     clearLogForFilter();
   });
 
@@ -1859,7 +2978,7 @@
       const r = await fetch("/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json", "authorization": "Bearer " + iKey, "x-opencode-pi-source": "playground" },
-        body: JSON.stringify({ model: "Qwen3-1.7B", stream: true, messages: convo }),
+        body: JSON.stringify({ model: "Qwen2.5-Coder-3B-Instruct", stream: true, messages: convo }),
         signal: chatAbort.signal,
       });
       if (!r.ok || !r.body) throw new Error("HTTP " + (r.status || 0));
@@ -1910,14 +3029,16 @@
 
   function logTagInfo(type) {
     switch (type) {
-      case "request.completed": return ["ok", "req"];
-      case "request.error": return ["err", "req"];
-      case "request.started": return ["info", "req"];
-      case "system.metrics": return ["sys", "sys"];
+      case "request.completed": return ["ok", "req", "req"];
+      case "request.error": return ["err", "req", "req"];
+      case "request.started": return ["info", "req", "req"];
+      case "system.metrics": return ["sys", "sys", "sys"];
       case "model.status":
       case "llama.status":
-      case "gateway.status": return ["info", "state"];
-      default: return ["dim", String(type).slice(0, 12)];
+      case "gateway.status": return ["info", "state", "sys"];
+      default:
+        if (String(type).startsWith("analytics.") || String(type).startsWith("training.")) return ["ml", "ml", "ml"];
+        return ["dim", String(type).slice(0, 12), "sys"];
     }
   }
   function idFromLog(s) {
@@ -1943,11 +3064,12 @@
   }
   function appendEvt(container, type, text, level, reqId, cap) {
     const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
-    const [cls, label] = logTagInfo(type);
+    const [cls, label, src] = logTagInfo(type);
     const colorCls = type === "log" && (level === "error" || level === "warn") ? (level === "error" ? "err" : "warn") : cls;
     const row = document.createElement("div");
     row.className = "evt";
     if (reqId) row.dataset.req = String(reqId);
+    row.dataset.src = src;
     const t = document.createElement("span");
     t.className = "t";
     t.textContent = new Date().toLocaleTimeString();
@@ -1963,7 +3085,11 @@
     if (nearBottom) container.scrollTop = container.scrollHeight;
   }
   function appendLog(type, text, level, reqId) {
+    const [,, src] = logTagInfo(type);
+    logBuffer.push({ type, text, level, reqId, src, at: Date.now() });
+    while (logBuffer.length > 400) logBuffer.shift();
     if (!logLevelPass(level)) return;
+    if (!logSourcePass(src)) return;
     appendEvt(q("log"), type, text, level, reqId, 400);
   }
   function appendStream(type, text, level, reqId) {
@@ -1971,11 +3097,72 @@
     if (!el) return;
     appendEvt(el, type, text, level, reqId, 200);
   }
+  function pushPipe(label, text, level) {
+    const el = q("pipeStream");
+    if (!el) return;
+    appendEvt(el, label, text, level, "", 300);
+  }
+  function streamNote(obj) {
+    const t = obj.type;
+    const m = obj.metrics || {};
+    if (t === "analytics.risk") return "risk " + (obj.level || "?") + " · T² " + (obj.t2 != null ? obj.t2.toFixed(2) : "?") + " · p " + (obj.pValue != null ? obj.pValue.toExponential(2) : "?") + (obj.nnRisk ? " · nn " + obj.nnRisk : "");
+    if (t === "analytics.infer") return "tf-lite infer → " + (obj.nnRisk || "?");
+    if (t === "training.progress" && obj.config) return "trial " + (obj.trial ?? "?") + "/" + (obj.trials ?? "?") + " · F1 " + (m.f1 != null ? m.f1.toFixed(3) : "?") + " · acc " + (m.accuracy != null ? m.accuracy.toFixed(3) : "?");
+    if (t === "training.done") return obj.best ? "done · F1 " + (obj.best.f1 != null ? obj.best.f1.toFixed(3) : "?") + " → " + (obj.best.modelFile || obj.best.kind || "") : "training done";
+    if (t === "training.started") return "training started" + (obj.rows != null ? " · rows " + obj.rows : "");
+    if (t === "training.skipped") return "training skipped" + (obj.reason ? " · " + String(obj.reason).slice(0, 80) : "");
+    if (t === "training.error") return "training error" + (obj.message ? " · " + String(obj.message).slice(0, 140) : "");
+    if (t.startsWith("training.")) return t.replace("training.", "training · ");
+    if (t.startsWith("analytics.")) return t + (obj.message ? " · " + String(obj.message).slice(0, 80) : "");
+    if (t === "gateway.status") return "gateway " + (obj.status || "");
+    if (t === "llama.status") return "llama " + (obj.status || "");
+    if (t === "model.status") return "model " + (obj.status || obj.state || obj.file || "");
+    return t + (obj.message ? " · " + String(obj.message).slice(0, 80) : "");
+  }
+  function routeLogLine(msg) {
+    if (!msg) return;
+    let label = "sys";
+    if (/update|download|swap|installing|\.gguf/i.test(msg)) label = "upd";
+    else if (/training|trial|epoch|f1|watermark|tf-lite|tflite/i.test(msg)) label = "ml";
+    else if (/analytics|ingest|window|reference|risk|warehouse/i.test(msg)) label = "wh";
+    else if (/request|llama|model|v1\/chat/i.test(msg)) label = "inf";
+    pushPipe(label, msg.slice(0, 200));
+  }
+  function routePipes(obj) {
+    const t = obj.type;
+    let label = "sys";
+    if (t.startsWith("request.")) label = "req";
+    else if (t === "llama.status") label = "llm";
+    else if (t.startsWith("analytics.")) label = "wh";
+    else if (t.startsWith("training.")) label = "ml";
+    else if (t === "model.status") label = "upd";
+    else if (t === "gateway.status") label = "gw";
+    pushPipe(label, streamNote(obj), undefined);
+  }
   function fmtReqLine(o) {
     const where = [o.source ? String(o.source).slice(0, 24) : "?", o.ip ? "IP " + String(o.ip) : ""].filter(Boolean).join(" · ");
     return where + " · " + o.type.replace("request.", "") + (o.error ? "  (error: " + o.error + ")" : "");
   }
   q("btnClearLog").addEventListener("click", () => { q("log").textContent = ""; });
+  q("btnClearStream").addEventListener("click", () => { if (q("dashStream")) q("dashStream").textContent = ""; });
+  q("btnClearPipeStream").addEventListener("click", () => { if (q("pipeStream")) q("pipeStream").textContent = ""; });
+
+  let lastWinBoundary = 0;
+  setInterval(() => {
+    const el = q("mlWinClock");
+    if (!el) return;
+    const now = Date.now();
+    const tile = 60000;
+    const tileIdx = Math.floor(now / tile);
+    const rem = tile - (now % tile);
+    const s = Math.max(0, Math.ceil(rem / 1000) - 1);
+    const sec = String(Math.floor(now / 1000) % 60).padStart(2, "0");
+    el.textContent = ":" + sec + " · next :00 in " + String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+    if (s <= 0 && lastWinBoundary !== tileIdx) {
+      lastWinBoundary = tileIdx;
+      mlReload(true);
+    }
+  }, 1000);
 
   function cssv(name) {
     return getComputedStyle(document.body).getPropertyValue(name).trim();
@@ -2028,6 +3215,14 @@
     drawSpark("spTemp", METRIC_HIST.temp, cssv("--ac-host"));
     drawSpark("spApm", METRIC_HIST.apm, cssv("--ac-stream"));
     drawSpark("spTps", METRIC_HIST.tps, cssv("--ac-model"));
+    $s("mRows", last(ML_HIST.rows) != null ? String(Math.round(last(ML_HIST.rows))) : "—");
+    $s("mWin", last(ML_HIST.windows) != null ? String(Math.round(last(ML_HIST.windows))) : "—");
+    $s("mReq", last(ML_HIST.requests) != null ? String(Math.round(last(ML_HIST.requests))) : "—");
+    $s("mTfl", last(ML_HIST.tflite) != null ? fmtBytes(last(ML_HIST.tflite)) : "—");
+    drawSpark("mSpRows", ML_HIST.rows, cssv("--ac-model"));
+    drawSpark("mSpWin", ML_HIST.windows, cssv("--ac-model"));
+    drawSpark("mSpReq", ML_HIST.requests, cssv("--ac-stream"));
+    drawSpark("mSpTfl", ML_HIST.tflite, cssv("--ac-model"));
   }
 
   function renderNeofetch() {
@@ -2105,6 +3300,10 @@
     const mountLine = mounts.length
       ? mounts.map((mt) => escapeHtml(mt.device + " → " + mt.mount + " (" + mt.fs + ")")).join("<br>")
       : "no NVMe/root/home mounts exposed yet";
+    const whPath = (whSql && whSql.path) || null;
+    const whLine = whPath
+      ? '<b>warehouse sqlite →</b> ' + escapeHtml(whPath) + ' · <span style="color:var(--ok)">live</span>'
+      : '<span class="muted">warehouse sqlite — no path synced yet</span>';
     const neo = '<div class="neo-wrap">' +
       '<div class="neo-panel"><pre class="neo-ascii neo-arch">' + archArt + '</pre><div class="neo-info">' + hostLines + "</div></div>" +
       '<div class="neo-panel"><pre class="neo-ascii neo-deb">' + debArt + '</pre><div class="neo-info">' + boxLines + "</div></div>" +
@@ -2112,7 +3311,7 @@
     '<div class="neo-nvme">' +
       '<div class="nrow">' + diskLine + "</div>" +
       '<div class="nrow">' + mountLine + "</div>" +
-      '<div class="nrow muted">warehouse sqlite DB planned on NVMe hardware</div>' +
+      '<div class="nrow">' + whLine + "</div>" +
     "</div>";
     document.querySelectorAll("[data-neo]").forEach((el) => { el.innerHTML = neo; });
   }
@@ -2153,10 +3352,12 @@
       if (obj.type === "log") {
         appendLog("log", obj.message ?? "", obj.level, reqId);
         appendStream("log", obj.message ?? "", obj.level, reqId);
-        if (obj.message) parseLogLine(obj.message);
+        if (obj.message) { parseLogLine(obj.message); routeLogLine(obj.message); }
       } else {
         appendLog(obj.type, JSON.stringify(obj).slice(0, 400), undefined, reqId);
+        routePipes(obj);
         if (obj.type.startsWith("request.")) appendStream(obj.type, fmtReqLine(obj), undefined, reqId);
+        else appendStream(obj.type, streamNote(obj), undefined, reqId);
       }
       if (obj.type === "model.status") refresh();
       if (obj.type === "llama.status" || obj.type === "gateway.status") {
@@ -2169,13 +3370,22 @@
       if (obj.type === "system.metrics") { renderSystem(obj); renderStatusbar({ gateway: q("sbGw")?.dataset?.gw || "online", llama: q("sbLl")?.textContent || "offline", model: q("sbModel")?.textContent, ...obj }); }
       if (obj.type === "analytics.risk") {
         anRisk = { ...obj };
+        if (obj.nnRisk) {
+          liveNn = { label: obj.nnRisk, prob: obj.nnProb, ms: obj.nnLatencyMs };
+          setNnChips(obj.nnRisk, obj.nnProb, obj.nnLatencyMs);
+          updateTeleTicker();
+        }
         if (obj.nnRisk && anMeta && anMeta.latency) { anMeta.latency.lastNnMs = obj.nnLatencyMs ?? anMeta.latency.lastNnMs; }
         if (anCfg) renderAnalytics();
+        mlReload(true);
       }
       if (obj.type === "analytics.infer") {
-        chip("anNnChip", "tf-lite " + (obj.nnRisk || "—"));
+        liveNn = { label: obj.nnRisk || "—", prob: obj.nnProb, ms: obj.nnLatencyMs };
+        setNnChips(obj.nnRisk, obj.nnProb, obj.nnLatencyMs);
+        updateTeleTicker();
         if (anMeta && anMeta.latency) { anMeta.latency.lastNnMs = obj.nnLatencyMs ?? anMeta.latency.lastNnMs; anMeta.latency.nnRuns = (anMeta.latency.nnRuns || 0) + 1; }
         renderAnalytics();
+        mlReload(true);
       }
       if (obj.type === "analytics.meta") {
         anMeta = obj;
@@ -2197,9 +3407,10 @@
       if (obj.type === "training.done") {
         if (obj.best) anBestData = obj.best;
         loadAnalytics();
+        mlReload(false);
       }
-      if (obj.type === "training.started") { anTrialHtml = ""; $s("anTrials", ""); }
-      if (obj.type && obj.type.startsWith("training.") && obj.type !== "training.progress") loadAnalytics();
+      if (obj.type === "training.started") { anTrialHtml = ""; $s("anTrials", ""); mlReload(false); }
+      if (obj.type && obj.type.startsWith("training.") && obj.type !== "training.progress") { loadAnalytics(); mlReload(false); }
       handleRequestEvent(obj);
     };
     ws.onerror = () => { dot.className = "dot err"; };

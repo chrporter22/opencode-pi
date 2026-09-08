@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-opencode-pi is a self-hosted, LAN-only local AI control center running on a Raspberry Pi 5. It runs a quantized Qwen3-1.7B (Q8_0) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on the local network, and ships a clean, single-file browser control center for monitoring and operating the system.
+opencode-pi is a self-hosted, LAN-only local AI control center running on a Raspberry Pi 5. It runs a quantized Qwen2.5-Coder-3B-Instruct (Q4_K_M) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on the local network, and ships a clean, single-file browser control center for monitoring and operating the system.
 
 The inference path is deliberately simple and isolated: one Express gateway is the single entry point for every client, and the model server is bound to localhost only. Nothing touches the model except the gateway.
 
@@ -17,7 +17,7 @@ The Raspberry Pi 5 hosts:
 
 - Node.js/Express gateway
 - llama.cpp `llama-server` (binary provisioned on the host, mounted into the container)
-- Quantized Qwen3-1.7B (Q8_0) GGUF model (external data, never baked into the image)
+- Quantized Qwen2.5-Coder-3B-Instruct Q4_K_M GGUF model (external data, never baked into the image)
 - Model lifecycle/update management
 - Health and status endpoints
 
@@ -29,7 +29,7 @@ The model itself MUST NOT be baked into the Docker image. The model is external,
 
 ### Primary goals
 
-- Run Qwen3-1.7B locally on Raspberry Pi 5.
+- Run Qwen2.5-Coder-3B-Instruct locally on Raspberry Pi 5.
 - Use a quantized GGUF model suitable for Pi hardware.
 - Expose an OpenAI-compatible API to OpenCode.
 - Put the Node gateway and `llama-server` in one Docker container (binary mounted from host, model mounted as external data).
@@ -93,7 +93,7 @@ The initial version will NOT:
                  ┌─────────────────────┐
                  │    llama-server     │
                  │                     │
-                 │ Qwen3-1.7B GGUF │
+                 │ Qwen2.5-Coder-3B-Instruct GGUF │
                  └─────────────────────┘
 ```
 
@@ -192,7 +192,7 @@ The actual model directory lives outside the repository: `/opt/qwen-model/`.
 
 1. **Local self-hosted.** The system runs entirely on the Raspberry Pi 5 without external cloud or SaaS dependencies.
 2. **Two-machine topology.** The Pi 5 hosts everything (gateway, `llama-server`, model, lifecycle management). An Arch Linux laptop on the LAN runs OpenCode and consumes the OpenAI-compatible API.
-3. **Quantized GGUF.** A quantized Qwen3-1.7B GGUF (Q8_0) suitable for Pi-class compute is used. Supported/configurable variants include Q4_K_M, Q5_K_M, Q6_K, and Q8_0.
+3. **Quantized GGUF.** A quantized Qwen2.5-Coder-3B-Instruct GGUF (Q4_K_M) suitable for Pi-class compute is used. Supported/configurable variants include Q4_K_M, Q5_K_M, Q6_K, and Q8_0.
 4. **Simple, isolated inference path.** Clients → gateway → `llama-server`, with no other hops, caches, or middleware in the inference path.
 5. **UI independent of model.** The control plane and control center are model-agnostic. Model name, URL, and quantization are configuration, not code — changing the model does not require application changes.
 
@@ -554,7 +554,7 @@ approval — still never the content itself).
 {
   "gateway": "online",
   "llama": "online",
-  "model": "Qwen3-1.7B",
+  "model": "Qwen2.5-Coder-3B-Instruct",
   "modelLoaded": true
 }
 ```
@@ -563,9 +563,9 @@ approval — still never the content itself).
 
 ```json
 {
-  "name": "Qwen3-1.7B",
+  "name": "Qwen2.5-Coder-3B-Instruct",
   "file": "current.gguf",
-  "quantization": "Q8_0",
+  "quantization": "Q4_K_M",
   "installed": true
 }
 ```
@@ -841,16 +841,16 @@ Progress is streamed over `/ws` (`model.update` events).
 - After success or failure, `.download/` MUST be cleaned.
 - `scripts/cleanup.sh` removes only known temporary files and artifacts. It MUST NOT blindly run `rm -rf /opt/qwen-model/*`, and it must never delete the working model unless explicitly told to.
 
-### 10.7 Step-by-step: swap the default model to a 4-bit quant (Q8_0 → Q4_K_M)
+### 10.7 Step-by-step: swap the default model to Qwen2.5-Coder-3B-Instruct Q4_K_M
 
-The official `Qwen/Qwen3-1.7B-GGUF` repo ships only the `Q8_0` file; the 4-bit
-**Q4_K_M** (imatrix) quant of the same model is published in a community mirror:
+The current default model is **Qwen2.5-Coder-3B-Instruct** at **Q4_K_M**, from the
+official `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` repo:
 
-- **Repo:** `bartowski/Qwen_Qwen3-1.7B-GGUF` (Apache-2.0, imatrix)
-- **File:** `Qwen_Qwen3-1.7B-Q4_K_M.gguf`
-- **URL:** `https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf`
-- **Size:** 1,282,439,584 bytes (~1.28 GB, vs ~1.83 GB for Q8_0)
-- **SHA-256:** `72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb`
+- **Repo:** `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` (official, Apache-2.0)
+- **File:** `qwen2.5-coder-3b-instruct-q4_k_m.gguf`
+- **URL:** `https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf`
+- **Size:** 2,104,932,800 bytes (~2.10 GB)
+- **SHA-256:** `724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7`
 
 The swap is configuration-only — the model is data, not code, so nothing in the
 image or `/opt/llama` changes. It reuses the standard atomic update mechanism
@@ -868,13 +868,13 @@ rollback.
 llama-server:
 
 ```bash
-sudo ./scripts/install.sh          # installs llama + Q4_K_M model, points .env at it
-sudo ./scripts/install.sh --clean-old   # also delete the preserved previous (Q8_0)
+sudo ./scripts/install.sh          # installs llama + the default model, points .env at it
+sudo ./scripts/install.sh --clean-old   # also delete the preserved previous model
 ```
 
-- Downloads `Qwen_Qwen3-1.7B-Q4_K_M.gguf` if the target is not already in place,
-  verifies SHA-256, atomically swaps it into `$MODEL_DIR/current.gguf`, and rewrites
-  `MODEL_URL` / `MODEL_SHA256` / `MODEL_QUANT` in `<repo>/.env` to the 4-bit values.
+- Downloads `qwen2.5-coder-3b-instruct-q4_k_m.gguf` if the target is not already in
+  place, verifies SHA-256, atomically swaps it into `$MODEL_DIR/current.gguf`, and
+  rewrites `MODEL_URL` / `MODEL_SHA256` / `MODEL_QUANT` in `<repo>/.env`.
 - **Old-model cleanup:** the pre-swap model is preserved as
   `$MODEL_DIR/.previous.gguf`. Remove it deliberately with `--clean-old`, or later
   with `sudo ./scripts/cleanup.sh --previous-model`. The name was chosen so cleanup
@@ -884,23 +884,22 @@ sudo ./scripts/install.sh --clean-old   # also delete the preserved previous (Q8
 
 ### 10.7b Gateway API swap
 
-The steps below remain the no-script alternative. The old `current.gguf` is
-replaced (not kept) in this path.
+The steps below remain the no-script alternative.
 
-1. **Back up the current model values.** Save the running `MODEL_URL`,
-   `MODEL_SHA256`, and `MODEL_QUANT` from `.env` for rollback (the old
-   `current.gguf` is replaced, not kept).
+1. **Back up the current model values.** Save the running `MODEL_NAME`, `MODEL_URL`,
+   `MODEL_SHA256`, and `MODEL_QUANT` from `.env` for rollback.
 
-2. **Point the config at the 4-bit file.** In `.env`, set:
+2. **Point the config at the new file.** In `.env`, set the model's values, e.g.:
 
    ```
-   MODEL_URL=https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf
-   MODEL_SHA256=72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb
+   MODEL_NAME=Qwen2.5-Coder-3B-Instruct
+   MODEL_URL=https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf
+   MODEL_SHA256=724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7
    MODEL_QUANT=Q4_K_M
    ```
 
-   `MODEL_NAME=Qwen3-1.7B`, `MODEL_FILE=current.gguf`, and `MODEL_DIR=/opt/qwen-model`
-   stay as they are — the alias, filename, and mount are stable across quants.
+   `MODEL_FILE=current.gguf` and `MODEL_DIR=/opt/qwen-model` stay as they are — the
+   filename and mount are stable across models.
 
 3. **Reload the gateway config.** The gateway reads env at startup, so recreate the
    container: `docker compose up -d` (Compose recreates the service because the env
@@ -921,27 +920,26 @@ replaced (not kept) in this path.
 
 5. **Verify the swap.**
    - `GET /api/status` → `"llama":"ready"`, `"modelLoaded":true`.
-   - `GET /api/model` → `"quantization":"Q4_K_M"`, `sizeBytes` ≈ 1,282,439,584,
-     `sha256` = the 4-bit hash above, `downloadUrl` = the bartowski URL.
-   - `GET /v1/models` → id still `Qwen3-1.7B` (the alias is unchanged).
+   - `GET /api/model` → `"name":"Qwen2.5-Coder-3B-Instruct"`,
+     `"quantization":"Q4_K_M"`, `sizeBytes` ≈ 2,104,932,800, `sha256` = the hash above.
+   - `GET /v1/models` → id `Qwen2.5-Coder-3B-Instruct` (the alias follows `MODEL_NAME`).
    - A streaming completion still works and tok/s is reported in `/api/system`.
 
-6. **Measure and re-tune.** CPU decoding is memory-bandwidth-bound, so the ~1.28 GB
-   file (vs ~1.83 GB) should yield roughly 1.3–1.6× throughput over the ~8.7 tok/s
-   baseline at `LLAMA_THREADS=4`. Re-measure with a live completion and adjust
-   `LLAMA_THREADS` if needed. If output quality regresses for a real use case, the
-   next step up is Q5_K_M (1.47 GB).
+6. **Measure and re-tune.** Re-measure with a live completion and adjust
+   `LLAMA_THREADS` if needed.
 
-7. **Rollback.** Restore the saved `MODEL_URL`/`MODEL_SHA256`/`MODEL_QUANT` (Q8_0) in
-   `.env`, run `docker compose up -d`, then trigger `POST /api/model/update` again —
-   Q8_0 is re-downloaded, verified, and reinstalled the same way. If the swap was
-   done via the host scripts, the preserved `$MODEL_DIR/.previous.gguf` (Q8_0) can be
-   copied back directly instead of re-downloading.
+7. **Rollback.** Restore the saved `MODEL_NAME`/`MODEL_URL`/`MODEL_SHA256`/
+   `MODEL_QUANT` in `.env`, run `docker compose up -d`, then trigger
+   `POST /api/model/update` again — the old model is re-downloaded, verified, and
+   reinstalled the same way. If the swap was done via the host scripts, the preserved
+   `$MODEL_DIR/.previous.gguf` can be copied back directly instead of re-downloading.
 
 Notes:
 
-- There is no public "Qwen3.5-1.7B" artifact; the intended target is the Qwen3-1.7B
-  weights in 4-bit, served by the mirror above.
+- The model ID exposed by `/v1/models` is the `--alias` built from `MODEL_NAME`; it
+  changed to `Qwen2.5-Coder-3B-Instruct` with this swap, so the laptop opencode
+  config's model id must be updated to match (unlike a quant-only swap, where the ID
+  stays put).
 - The existing host scripts referenced in §10.4 (`scripts/ensure-model.sh` /
   `scripts/update-model.sh`) still do not exist; the canonical paths are the gateway
   API above and the model provisioning now built into `scripts/install.sh` /
@@ -960,12 +958,12 @@ Configuration is controlled through environment variables (`.env`, loaded by Doc
 | `LLAMA_HOST`            | `llama-server` bind address                   | `127.0.0.1`                 |
 | `LLAMA_PORT`            | `llama-server` port                           | `8000`                      |
 | `LLAMA_BIN`             | Path to `llama-server` inside the container   | `/opt/llama/llama-server`   |
-| `LLAMA_CONTEXT_SIZE`    | Context window (Qwen3-1.7B max 32768)        | `8192`                      |
+| `LLAMA_CONTEXT_SIZE`    | Context window (Qwen2.5-Coder-3B-Instruct max 32768) | `32768`                    |
 | `LLAMA_THREADS`         | CPU threads (empty = llama decides)           | (unset)                     |
 | `LLAMA_BATCH_SIZE`      | Prompt batch size                             | (unset)                     |
 | `LLAMA_PARALLEL`        | Parallel sequences                            | (unset)                     |
 | `LLAMA_EXTRA_ARGS`      | Additional `llama-server` flags               | (unset)                     |
-| `MODEL_NAME`            | Model display name                            | `Qwen3-1.7B`                |
+| `MODEL_NAME`            | Model display name                            | `Qwen2.5-Coder-3B-Instruct` |
 | `MODEL_URL`             | Download URL for the GGUF (configurable)      | (required)                  |
 | `MODEL_FILE`            | Active filename inside `/models`              | `current.gguf`              |
 | `MODEL_SHA256`          | Expected SHA-256 of the model (optional)      | (unset)                     |
@@ -981,7 +979,7 @@ Configuration is controlled through environment variables (`.env`, loaded by Doc
 | `ANALYTICS_CONTEXT_WINDOWS`    | Context windows fed to the model       | `12`                        |
 | `ANALYTICS_EWMA_DECAY`  | EWMA reference decay per window               | `0.1`                       |
 | `ANALYTICS_ML_DIR`      | Host ML artifacts dir (TFLite, checkpoints)   | `/opt/qwen-ml`              |
-| `ANALYTICS_DB_FILE`     | SQLite store file (external mount)            | `/data/analytics.db`        |
+| `ANALYTICS_DB_FILE`     | SQLite store file (host bind, survives `down -v`) | `/opt/qwen-ml/analytics.db`
 | `ANALYTICS_PCA_COMPONENTS` | Max PCA components retained                | `6`                         |
 | `ANALYTICS_PCA_WATCH_Z` | Watch-band σ threshold on top-3 PC z-scores   | `1.0`                       |
 | `ANALYTICS_PCA_HIGH_Z`  | High-risk σ threshold (`≤ −h or ≥ +h` trips)  | `1.5`                       |
@@ -997,7 +995,7 @@ Configuration is controlled through environment variables (`.env`, loaded by Doc
 
 Notes:
 
-- The exact GGUF URL (default: `Qwen/Qwen3-1.7B-GGUF`, `Qwen3-1.7B-Q8_0.gguf`) is configurable rather than hard-coded into application logic.
+- The exact GGUF URL (default: `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF`, `qwen2.5-coder-3b-instruct-q4_k_m.gguf`) is configurable rather than hard-coded into application logic.
 - Performance settings (`LLAMA_CONTEXT_SIZE`, `LLAMA_THREADS`, `LLAMA_BATCH_SIZE`, `LLAMA_PARALLEL`, `LLAMA_EXTRA_ARGS`) are environment-driven and should not be hard-coded until the target Qwen variant is selected and benchmarked.
 - The original single `GATEWAY_API_KEY` concept from early drafts maps to the inference key (`INFERENCE_API_KEY`). The admin key is the additional stronger credential introduced for the control surface.
 
@@ -1047,7 +1045,7 @@ Example:
 [INFO] Starting llama-server
 [INFO] Waiting for llama-server
 [INFO] llama-server ready
-[INFO] Model: Qwen3-1.7B
+[INFO] Model: Qwen2.5-Coder-3B-Instruct
 [INFO] Gateway ready
 ```
 
@@ -1101,8 +1099,7 @@ ports:
 volumes:
   - /opt/qwen-model:/models            # model data (gateway only)
   - /opt/llama:/opt/llama:ro            # host-provisioned llama runtime (read-only)
-  - /opt/qwen-ml:/opt/qwen-ml           # ML artifacts (analytics + analytics-train)
-  - /opt/qwen-ml/state:/var/lib/analytics  # SQLite store file (external, survives recreation)
+  - /opt/qwen-ml:/opt/qwen-ml           # ML artifacts + SQLite store (analytics + analytics-train)
   - redis-data:/data                    # warehoused Redis (appendonly)
 
 networks:
@@ -1174,7 +1171,7 @@ curl http://<PI-IP>:8080/v1/models
 curl http://<PI-IP>:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Qwen3-1.7B",
+    "model": "Qwen2.5-Coder-3B-Instruct",
     "messages": [
       {
         "role": "user",
@@ -1321,15 +1318,14 @@ Note: the original spec listed the *web control center, model dashboard, CPU/RAM
 
 Resolved at build time:
 
-- **Model:** Qwen3-1.7B, `Q4_K_M` imatrix (4-bit) from the `bartowski/Qwen_Qwen3-1.7B-GGUF`
-  community mirror (~1.28 GB, Apache-2.0). Qwen's official `Qwen/Qwen3-1.7B-GGUF` repo
-  publishes only `Q8_0` — it does not ship 4-bit quants, so the 4-bit build comes from
-  bartowski (the prior Q8_0 official artifact, 1.83 GB, remains the `.previous.gguf`
-  rollback copy).
-- **Repository/source URL:** `https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf` (public, no auth required).
-- **Checksum:** SHA-256 `72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb` published by HuggingFace LFS (verified via the HF API on 2026-09-07).
-- **Expected context length:** `8192` (below Qwen3-1.7B's 32768 max, chosen for fast prompt-eval on the Pi's 4 cores; `LLAMA_CONTEXT_SIZE` default).
-- **Target tokens/sec:** ~8–10 on Pi 5 (measured ~8.7 at 4 threads on Cortex-A76-class); `LLAMA_THREADS=4`.
+- **Model:** Qwen2.5-Coder-3B-Instruct, `Q4_K_M` (4-bit) from the official
+  `Qwen/Qwen2.5-Coder-3B-Instruct-GGUF` repo (~2.10 GB, Apache-2.0). The previous
+  model was Qwen3-1.7B Q4_K_M (bartowski imatrix mirror, ~1.28 GB); its `current.gguf`
+  remains as the `.previous.gguf` rollback copy after the swap.
+- **Repository/source URL:** `https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf` (public, no auth required).
+- **Checksum:** SHA-256 `724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7` published by HuggingFace LFS (verified via the HF API on 2026-09-07).
+- **Expected context length:** `32768` (Qwen2.5-Coder-3B-Instruct native max; `LLAMA_CONTEXT_SIZE` default).
+- **Target tokens/sec:** ~8–10 on Pi 5 (measured ~8.7 at 4 threads on Cortex-A76-class for 1.7B; re-measure after the 3B swap); `LLAMA_THREADS=4`.
 - **Pi 5 RAM:** 16 GB.
 - **LAN key policy:** keys required by default; inference `/v1/*` + admin `/api/*` + `/ws`. No no-key mode.
 - **Automatic updates:** opt-in, default `false`.

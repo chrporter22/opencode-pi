@@ -60,7 +60,7 @@ describe("v1 proxy", () => {
       .post("/v1/chat/completions")
       .set("Authorization", "Bearer secret-inference-key")
       .set("content-type", "application/json")
-      .send({ model: "Qwen3-1.7B", messages: [{ role: "user", content: "hi" }] });
+      .send({ model: "Qwen2.5-Coder-3B-Instruct", messages: [{ role: "user", content: "hi" }] });
 
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("text/event-stream");
@@ -81,7 +81,7 @@ describe("v1 proxy", () => {
       .post("/v1/chat/completions")
       .set("x-opencode-pi-source", "playground")
       .set("x-forwarded-for", "192.168.1.42")
-      .send({ model: "Qwen3-1.7B", messages: [{ role: "user", content: "hi" }] });
+      .send({ model: "Qwen2.5-Coder-3B-Instruct", messages: [{ role: "user", content: "hi" }] });
 
     const rec = requests.snapshot()[0];
     expect(rec.status).toBe("completed");

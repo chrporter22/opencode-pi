@@ -47,46 +47,68 @@ function log1p(n: number | null | undefined): number {
   return Math.log1p(n);
 }
 
+interface SysOrFallback {
+  cpu: number | null;
+  memory: number | null;
+  temperature: number | null;
+  disk: { usedPercent: number | null };
+}
+
+async function awaitMetrics(metrics: Metrics): Promise<SysOrFallback> {
+  try {
+    return await metrics.snapshot();
+  } catch {
+    return { cpu: null, memory: null, temperature: null, disk: { usedPercent: null } };
+  }
+}
+
+function collectRecords(requests: RequestTracker, from: number): RequestRecord[] {
+  return requests.snapshot().filter(
+    (r: RequestRecord) =>
+      (r.status === "completed" || r.status === "error") && r.startedAt >= from
+  );
+}
+
+function composeFeatures(requests: RequestTracker, records: RequestRecord[], sys: SysOrFallback): number[] {
+  const latencies = records
+    .map((r) => r.durationMs)
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  const rates = records
+    .map((r) => r.tokensPerSecond)
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+  const errors = records.filter((r) => r.status === "error").length;
+  const errorRate = records.length > 0 ? errors / records.length : 0;
+
+  return [
+    log1p(requests.requestsPerMinute()),
+    errorRate,
+    log1p(pct(latencies, 95)),
+    log1p(pct(latencies, 99)),
+    log1p(pct(rates, 95)),
+    log1p(pct(rates, 99)),
+    sys.cpu != null ? sys.cpu / 100 : 0,
+    sys.memory != null ? sys.memory / 100 : 0,
+    sys.temperature ?? 0,
+    sys.disk.usedPercent != null ? sys.disk.usedPercent / 100 : 0,
+  ];
+}
+
 export function createAnalyticsPusher(deps: AnalyticsPusherDeps): AnalyticsPusher {
   let timer: NodeJS.Timeout | undefined;
-  let lastTick = 0;
   const backlog: unknown[] = [];
 
   async function windowPayload(): Promise<unknown> {
     const now = Date.now();
-    const from = lastTick > 0 ? lastTick : now - deps.windowSec * 1000;
-    lastTick = now;
+    const tile = deps.windowSec * 1000;
+    // Anchored to wall-clock tiles so windows are created on the :00/:60 marks.
+    const from = Math.floor(now / tile) * tile;
 
-    const records = deps.requests.snapshot().filter(
-      (r: RequestRecord) =>
-        (r.status === "completed" || r.status === "error") && r.startedAt >= from
-    );
-
-    const latencies = records
-      .map((r) => r.durationMs)
-      .filter((v): v is number => v !== null && Number.isFinite(v));
-    const rates = records
-      .map((r) => r.tokensPerSecond)
-      .filter((v): v is number => v !== null && Number.isFinite(v));
-    const errors = records.filter((r) => r.status === "error").length;
-    const errorRate = records.length > 0 ? errors / records.length : 0;
-
-    const sys = await awaitMetrics();
+    const records = collectRecords(deps.requests, from);
+    const sys = await awaitMetrics(deps.metrics);
     return {
       windowStart: from,
       windowEnd: now,
-      features: [
-        log1p(deps.requests.requestsPerMinute()),
-        errorRate,
-        log1p(pct(latencies, 95)),
-        log1p(pct(latencies, 99)),
-        log1p(pct(rates, 95)),
-        log1p(pct(rates, 99)),
-        sys.cpu != null ? sys.cpu / 100 : 0,
-        sys.memory != null ? sys.memory / 100 : 0,
-        sys.temperature ?? 0,
-        sys.disk.usedPercent != null ? sys.disk.usedPercent / 100 : 0,
-      ],
+      features: composeFeatures(deps.requests, records, sys),
       requests: records.map((r) => ({
         startedAt: r.startedAt,
         features: [
@@ -100,14 +122,6 @@ export function createAnalyticsPusher(deps: AnalyticsPusherDeps): AnalyticsPushe
         error: r.status === "error" ? 1 : 0,
       })),
     };
-  }
-
-  async function awaitMetrics() {
-    try {
-      return await deps.metrics.snapshot();
-    } catch {
-      return { cpu: null, memory: null, temperature: null, disk: { usedPercent: null } };
-    }
   }
 
   async function post(payload: unknown): Promise<boolean> {
@@ -149,19 +163,87 @@ export function createAnalyticsPusher(deps: AnalyticsPusherDeps): AnalyticsPushe
     }
   }
 
+  function schedule(): void {
+    const tile = deps.windowSec * 1000;
+    const now = Date.now();
+    const delay = tile - (now % tile) + 25;
+    timer = setTimeout(() => {
+      timer = undefined;
+      void tick();
+      schedule();
+    }, delay);
+    timer.unref?.();
+  }
+
   return {
     start() {
       if (timer) return;
       // prime quickly so the first window lands shortly after boot
-      timer = setInterval(() => void tick(), deps.windowSec * 1000);
-      timer.unref();
-      setTimeout(() => void tick(), 5_000).unref();
+      setTimeout(() => void tick(), 5_000).unref?.();
+      schedule();
     },
     stop() {
-      if (timer) clearInterval(timer);
+      if (timer) clearTimeout(timer);
       timer = undefined;
     },
     pushNow: () => tick(),
+  };
+}
+
+export interface AnalyticsLiveScorer {
+  start(): void;
+  stop(): void;
+  scoreNow(): Promise<void>;
+}
+
+export function createAnalyticsLiveScorer(deps: AnalyticsPusherDeps): AnalyticsLiveScorer {
+  let unsubscribe: (() => void) | null = null;
+  let inFlight = false;
+
+  async function postLive(payload: unknown): Promise<boolean> {
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    try {
+      const res = await fetchImpl(`${deps.url}/v1/analytics/infer/current`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-ingest-secret": deps.ingestSecret },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok && res.status !== 404) {
+        deps.logger.warn(`analytics live infer failed (HTTP ${res.status})`);
+      }
+      return res.ok;
+    } catch (err) {
+      deps.logger.warn(`analytics live infer failed: ${(err as Error).message}`);
+      return false;
+    }
+  }
+
+  async function scoreNow(): Promise<void> {
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      const from = Date.now() - deps.windowSec * 1000;
+      const sys = await awaitMetrics(deps.metrics);
+      const features = composeFeatures(deps.requests, collectRecords(deps.requests, from), sys);
+      await postLive({ timestamp: Date.now(), features });
+    } finally {
+      inFlight = false;
+    }
+  }
+
+  return {
+    start() {
+      if (unsubscribe) return;
+      unsubscribe = deps.metrics.subscribeSample(() => {
+        void scoreNow();
+      });
+    },
+    stop() {
+      unsubscribe?.();
+      unsubscribe = null;
+    },
+    scoreNow,
   };
 }
 

@@ -67,8 +67,7 @@ def create_app(env: dict | None = None, analyzer: Analyzer | None = None, traine
                 schedule = Cron(runtime.cron)
                 if minute != last_minute and schedule.match(now_dt):
                     last_minute = minute
-                    if trainer.should_train():
-                        trainer.start(analyzer)
+                    trainer.maybe_start(analyzer)
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(30)
@@ -126,14 +125,22 @@ def create_app(env: dict | None = None, analyzer: Analyzer | None = None, traine
                                 detail="no model or no scored windows to infer")
         return result
 
+    @app.post("/v1/analytics/infer/current", dependencies=[Depends(auth)])
+    async def infer_current(payload: dict):
+        result = analyzer.live_score(payload.get("features"))
+        if result is None:
+            raise HTTPException(status_code=404,
+                                detail="no model or invalid live feature vector")
+        return result
+
     @app.post("/v1/analytics/ingest", dependencies=[Depends(auth)])
     async def ingest(payload: dict):
         try:
             record = analyzer.ingest(payload)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-        if record is not None and trainer.should_train():
-            trainer.start(analyzer)
+        if record is not None:
+            trainer.maybe_start(analyzer)
         return {"ok": True, "score": record}
 
     app.get("/v1/analytics/risk")(lambda: analyzer.pca_summary())
@@ -200,11 +207,11 @@ def create_app(env: dict | None = None, analyzer: Analyzer | None = None, traine
 
     @app.get("/v1/analytics/warehouse/raw/windows", dependencies=[Depends(auth)])
     async def warehouse_raw_windows(limit: int = Query(default=25, ge=1, le=200)):
-        return store.raw_windows(limit)
+        return analyzer.raw_windows(limit)
 
     @app.get("/v1/analytics/warehouse/raw/requests", dependencies=[Depends(auth)])
     async def warehouse_raw_requests(limit: int = Query(default=25, ge=1, le=200)):
-        return store.raw_requests(limit)
+        return analyzer.raw_requests(limit)
 
     @app.get("/v1/analytics/warehouse/redis")
     async def warehouse_redis():
@@ -215,9 +222,10 @@ def create_app(env: dict | None = None, analyzer: Analyzer | None = None, traine
         return trainer.status()
 
     @app.post("/v1/analytics/training/start", dependencies=[Depends(auth)])
-    async def training_start():
-        started = trainer.start(analyzer)
-        return {"ok": started, "status": trainer.status()}
+    async def training_start(payload: dict | None = None):
+        mode = (payload or {}).get("mode", "auto")
+        started = trainer.start(analyzer, mode=mode)
+        return {"ok": started, "mode": mode, "status": trainer.status()}
 
     @app.get("/v1/analytics/training/runs")
     async def training_runs(limit: int = Query(default=20, ge=1, le=100)):

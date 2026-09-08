@@ -11,6 +11,7 @@ export interface SystemSnapshot {
     availableBytes: number | null;
   };
   tokensPerSecond: number;
+  sampleMs: number;
 }
 
 interface CpuCounters {
@@ -95,6 +96,7 @@ export function createMetrics(opts: MetricsOptions): Metrics {
   const sampleSubscribers = new Set<(snapshot: SystemSnapshot) => void>();
 
   async function snapshot(): Promise<SystemSnapshot> {
+    const t0 = Date.now();
     const current = readCpuCounters();
     let cpu: number | null = null;
     if (current && prevCpu && current.total > prevCpu.total) {
@@ -104,13 +106,15 @@ export function createMetrics(opts: MetricsOptions): Metrics {
     }
     prevCpu = current;
 
+    const disk = await readDisk(opts.modelsDir);
     return {
       timestamp: Date.now(),
       cpu,
       memory: readMemoryPct(),
       temperature: readTemperature(),
-      disk: await readDisk(opts.modelsDir),
+      disk,
       tokensPerSecond: opts.getTokensPerSecond(),
+      sampleMs: Date.now() - t0,
     };
   }
 

@@ -3,7 +3,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { AuthContext } from "./auth.js";
 import { isAdminKey } from "./auth.js";
 import type { Logger } from "./logger.js";
-import type { Metrics } from "./metrics.js";
+import type { Metrics, SystemSnapshot } from "./metrics.js";
 import type { RequestRecord, RequestTracker } from "./requests.js";
 import type { RuntimeEvent, RuntimeState } from "./state.js";
 
@@ -67,13 +67,15 @@ export function startWsServer(opts: WsServerOptions): WsServer {
     broadcast({ type: "log", timestamp: entry.ts, level: entry.level, message: entry.msg });
   };
 
-  const onMetrics = (snapshot: { timestamp: number; cpu: number | null; memory: number | null; temperature: number | null; tokensPerSecond: number }): void => {
+  const onMetrics = (snapshot: SystemSnapshot): void => {
     broadcast({
       type: "system.metrics",
       timestamp: snapshot.timestamp,
       cpu: snapshot.cpu,
       memory: snapshot.memory,
       temperature: snapshot.temperature,
+      diskUsedPct: snapshot.disk.usedPercent,
+      sampleMs: snapshot.sampleMs,
       tokensPerSecond: snapshot.tokensPerSecond,
       requestsPerMinute: opts.requests.requestsPerMinute(),
     });

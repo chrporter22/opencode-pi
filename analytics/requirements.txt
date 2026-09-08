@@ -3,3 +3,7 @@ uvicorn[standard]>=0.30
 numpy>=1.26,<2.0
 redis>=5.0,<6
 tensorflow>=2.16,<2.17
+# Keras 3 (bundled with TF 2.16) crashes the TFLite converter on this stack
+# ("LLVM ERROR: Failed to infer result type(s)" / SIGABRT); pin the official
+# Keras 2 compatibility package and route tf.keras to it (TF_USE_LEGACY_KERAS).
+tf_keras>=2.16,<2.17

@@ -7,7 +7,7 @@ import numpy as np
 from . import mathlib
 from .config import Config
 from .events import EventBus
-from .features import FEATURE_NAMES
+from .features import FEATURE_NAMES, REQUEST_FEATURE_NAMES
 from .nn import TFLiteClassifier
 from .runtime import RuntimeConfig
 from .warehouse import RedisStore, SqliteStore, now_ms
@@ -215,6 +215,7 @@ class Analyzer:
             nn_latency_ms=nn.get("nnLatencyMs") if nn else None,
             nn_risk=nn.get("nnRisk") if nn else None,
             nn_prob=nn.get("nnProb") if nn else None,
+            z=z,
         )
         self.store.save_reference(self.reference.mu, self.reference.s2,
                                   self.reference.n, now_ms())
@@ -267,8 +268,29 @@ class Analyzer:
             })
         return out
 
+    def _feature_names(self) -> list[str]:
+        mask = np.array(self.runtime.feature_filter, dtype=bool)
+        return [name for name, flag in zip(FEATURE_NAMES, mask) if flag]
+
     def pca_cloud(self, limit: int = 300) -> list[dict]:
-        return self.store.pca_cloud(limit)
+        rows = self.store.pca_cloud(limit)
+        names = self._feature_names()
+        for row in rows:
+            row["featureNames"] = names
+        return rows
+
+    def raw_windows(self, limit: int = 25) -> list[dict]:
+        rows = self.store.raw_windows(limit)
+        names = self._feature_names()
+        for row in rows:
+            row["featureNames"] = names
+        return rows
+
+    def raw_requests(self, limit: int = 25) -> list[dict]:
+        rows = self.store.raw_requests(limit)
+        for row in rows:
+            row["featureNames"] = list(REQUEST_FEATURE_NAMES)
+        return rows
 
     def latency_history(self, limit: int = 120) -> list[dict]:
         return self.store.latency_history(limit)
@@ -290,6 +312,39 @@ class Analyzer:
         result["type"] = "analytics.infer"
         result["timestamp"] = now_ms()
         result["onWindowStart"] = int(row[0])
+        self.events.emit(result)
+        return result
+
+    def live_score(self, features: list[float] | None) -> dict | None:
+        """TF-lite inference on a live feature vector from the gateway.
+
+        Unlike :meth:`ingest`, nothing is written: no EWMA update, no reference,
+        no windows, no training rows. Pure read-only classify on each incoming
+        tele sample, emitted as ``analytics.infer`` with ``source="live"``.
+        """
+        if not features:
+            return None
+        if not self._model_active():
+            return None
+        x = np.asarray(features, dtype=float).ravel()
+        if x.size == 0:
+            return None
+        mask = np.array(self.runtime.feature_filter, dtype=bool)
+        if x.size == len(FEATURE_NAMES):
+            xf = x[mask]
+        elif x.size == int(mask.sum()):
+            xf = x
+        else:
+            return None
+        if xf.size == 0:
+            return None
+        result = self.nn.classify(xf)
+        if not result:
+            return None
+        result = dict(result)
+        result["type"] = "analytics.infer"
+        result["timestamp"] = now_ms()
+        result["source"] = "live"
         self.events.emit(result)
         return result
 

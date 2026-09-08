@@ -13,6 +13,9 @@ COPY analytics/requirements-dev.txt ./requirements-dev.txt
 RUN uv pip install --system --no-cache -r requirements.txt
 RUN uv pip install --system --no-cache -r requirements-dev.txt
 
+# Route tf.keras to the Keras 2 compatibility package (see requirements.txt)
+ENV TF_USE_LEGACY_KERAS=1
+
 COPY analytics/app ./app
 COPY analytics/tests ./tests
 

@@ -59,7 +59,7 @@ describe("control routes", () => {
     expect(res.body).toEqual({
       gateway: "starting",
       llama: "not_started",
-      model: "Qwen3-1.7B",
+      model: "Qwen2.5-Coder-3B-Instruct",
       modelLoaded: false,
     });
   });
@@ -70,12 +70,12 @@ describe("control routes", () => {
     const res = await request(app).get("/api/model");
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
-      name: "Qwen3-1.7B",
+      name: "Qwen2.5-Coder-3B-Instruct",
       file: "current.gguf",
       installed: false,
       quantization: null,
       downloadUrl: "https://example.com/model.gguf",
-      contextSize: 8192,
+      contextSize: 32768,
       loadingStatus: "none",
     });
     expect(typeof res.body.llamaArgs).toBe("string");
@@ -101,7 +101,7 @@ describe("control routes", () => {
 
   it("GET /api/requests returns the request ring", async () => {
     const deps = fixtures();
-    deps.requests.start({ id: "abc", method: "POST", path: "/chat/completions", model: "Qwen3-1.7B" });
+    deps.requests.start({ id: "abc", method: "POST", path: "/chat/completions", model: "Qwen2.5-Coder-3B-Instruct" });
     deps.requests.complete("abc", { promptTokens: 3, completionTokens: 9, totalTokens: 12 });
     const app = buildApp(deps);
     const res = await request(app).get("/api/requests");

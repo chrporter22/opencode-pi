@@ -15,7 +15,7 @@ import { opsRouter } from "./routes/ops.js";
 import { v1Router } from "./routes/v1.js";
 import { ensureModelAction } from "./model/actions/ensure-model.action.js";
 import { createLlamaSupervisor } from "./modules/llama/supervisor.js";
-import { createAnalyticsPusher } from "./modules/analytics/pusher.js";
+import { createAnalyticsLiveScorer, createAnalyticsPusher } from "./modules/analytics/pusher.js";
 
 const config = loadConfig();
 const auth = createAuth({ inferenceKey: config.keys.inference, adminKey: config.keys.admin });
@@ -39,6 +39,17 @@ app.use(healthRouter());
 
 const analyticsPusher = config.analytics.url && config.analytics.ingestSecret
   ? createAnalyticsPusher({
+      url: config.analytics.url,
+      ingestSecret: config.analytics.ingestSecret,
+      windowSec: config.analytics.windowSec,
+      requests,
+      metrics,
+      logger: log,
+    })
+  : null;
+
+const analyticsLiveScorer = config.analytics.url && config.analytics.ingestSecret
+  ? createAnalyticsLiveScorer({
       url: config.analytics.url,
       ingestSecret: config.analytics.ingestSecret,
       windowSec: config.analytics.windowSec,
@@ -142,6 +153,7 @@ function shutdown(signal: string): void {
   state.setGateway("stopping");
   metrics.stop();
   analyticsPusher?.stop();
+  analyticsLiveScorer?.stop();
   wsServer.close();
   void llamaSupervisor.stop();
   httpServer.close(() => {
@@ -160,5 +172,6 @@ httpServer.listen(config.gateway.port, config.gateway.host, () => {
   log.info("Gateway ready");
   metrics.start();
   analyticsPusher?.start();
+  analyticsLiveScorer?.start();
   void bootstrapModel().then(() => llamaSupervisor.start());
 });

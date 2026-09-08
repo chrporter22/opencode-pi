@@ -101,13 +101,26 @@ class TrainingOrchestrator:
         st = self.status()
         if st["state"] == "running":
             return False
+        # First build: need enough labeled windows.
+        if not st["modelActive"] and st["rows"] >= st["minRows"]:
+            return True
+        # Incremental fine-tune: only when new labeled windows exist past the
+        # watermark (avoids re-training the identical history every ingest).
         if st["modelActive"]:
-            return True
-        if st["rows"] >= st["minRows"]:
-            return True
+            if self.runtime.watermark is None:
+                return True
+            return self.store.new_training_rows(self.runtime.watermark) > 0
         return False
 
-    def start(self, analyzer) -> bool:
+    def maybe_start(self, analyzer) -> bool:
+        """Start a training run iff gating wants one (used by ingest + cron)."""
+        if not self.should_train():
+            return False
+        return self.start(analyzer)
+
+    def start(self, analyzer, mode: str = "auto") -> bool:
+        if mode not in ("auto", "watermark", "full"):
+            mode = "auto"
         with self._lock:
             if self.state.get("state") == "running":
                 return False
@@ -120,13 +133,13 @@ class TrainingOrchestrator:
             self.state["best"] = None
             self.state["lastTrial"] = None
             self._persist()
-        thread = threading.Thread(target=self._run, args=(analyzer,), daemon=True)
+        thread = threading.Thread(target=self._run, args=(analyzer, mode), daemon=True)
         thread.start()
         return True
 
-    def _run(self, analyzer) -> None:
+    def _run(self, analyzer, mode: str = "auto") -> None:
         try:
-            self._train(analyzer)
+            self._train(analyzer, mode)
         except Exception as exc:  # noqa: BLE001
             self.state["state"] = "error"
             self.state["error"] = str(exc)
@@ -181,19 +194,30 @@ class TrainingOrchestrator:
             "inputDim": model.input_shape[1] if getattr(model, "input_shape", None) else None,
         }
 
-    def _train(self, analyzer) -> None:
+    def _train(self, analyzer, mode: str = "auto") -> None:
         import tensorflow as tf  # noqa: PLC0415
 
-        fine_tune = model_savedmodel_path(self.cfg).exists()
+        # auto: fine-tune from the watermark when a model exists, else build fresh.
+        # watermark: force an incremental fine-tune from the watermark.
+        # full: rebuild from every labeled window (fresh architecture search).
+        sm_path = model_savedmodel_path(self.cfg)
+        fresh = mode == "full"
+        fine_tune = (not fresh) and sm_path.exists()
+        if mode == "auto":
+            since = self.runtime.watermark if fine_tune else None
+        elif mode == "watermark":
+            since = self.runtime.watermark
+        else:
+            since = None
         features, labels = self.store.training_features(
-            limit=None, since=self.runtime.watermark if fine_tune else None)
-        if len(features) < 2 or len(labels) < 2:
-            self.state["state"] = "done"
+            limit=None, since=since)
+        if len(features) < 5 or len(labels) < 5:
+            self.state["state"] = "idle"
             self.state["finishedAt"] = now_ms()
             self._persist()
             self._emit("training.skipped", run=int(self.state.get("run", 0)),
                        newRows=len(features),
-                       reason="no new windows since watermark")
+                       reason="too few new windows (need at least 5)")
             return
         x = np.asarray(features, dtype=np.float32)
         y = np.array([LABELS[l] for l in labels], dtype=np.int64)
@@ -201,11 +225,9 @@ class TrainingOrchestrator:
         y_oh[np.arange(len(y)), y] = 1.0
 
         run = int(self.state.get("run", 0))
-        sm_path = model_savedmodel_path(self.cfg)
-        fine_tune = sm_path.exists()
-        self._emit("training.started", run=run, rows=int(x.shape[0]),
+        self._emit("training.started", run=run, mode=mode, rows=int(x.shape[0]),
                    trials=self.runtime.train_trials, epochs=self.runtime.train_epochs,
-                   fineTune=fine_tune, since=self.runtime.watermark)
+                   fineTune=fine_tune, since=since)
 
         rng = random.Random(self.runtime.train_seed)
         trials = self.runtime.train_trials

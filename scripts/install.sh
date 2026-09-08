@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Provision llama-server into /opt/llama and install the Qwen3-1.7B 4-bit
-# (Q4_K_M) model for faster CPU token throughput. Idempotent: re-running replaces
+# Provision llama-server into /opt/llama and install the Qwen2.5-Coder-3B-Instruct
+# (Q4_K_M) model for fast CPU token throughput. Idempotent: re-running replaces
 # the binary and model with the same/latest targets.
 #
 # The gateway runs llama-server inside its container (Dockerfile base:
@@ -16,7 +16,7 @@
 #
 # Usage:  sudo ./scripts/install.sh [--clean-old]
 #   --clean-old   after the new model is verified in place, remove the previous
-#                 model file (e.g. the old Q8_0 current.gguf) if it differs from
+#                 model file (e.g. the old Qwen3-1.7B/Q8_0 current.gguf) if it differs from
 #                 the newly installed file. Never touches the live model that was
 #                 just installed.
 #
@@ -29,7 +29,7 @@
 #                             Dockerfile base).
 #         LLAMA_DIR           override install root (default /opt/llama, for testing)
 #         MODEL_DIR           override model dir (default /opt/qwen-model, for testing)
-#         MODEL_URL           model file URL (default: Qwen3-1.7B Q4_K_M imatrix)
+#         MODEL_URL           model file URL (default: Qwen2.5-Coder-3B-Instruct Q4_K_M)
 #         MODEL_SHA256        expected SHA-256 of the model file (must match URL)
 #         MODEL_QUANT         quantization label written to .env (default Q4_K_M)
 #         MODEL_FILE          model filename (default current.gguf)
@@ -40,8 +40,8 @@ LLAMA_DIR="${LLAMA_DIR:-/opt/llama}"
 MODEL_DIR="${MODEL_DIR:-/opt/qwen-model}"
 LLAMA_RUNTIME_IMAGE="${LLAMA_RUNTIME_IMAGE:-node:22-trixie-slim}"
 DEFAULT_RELEASE="b9500"
-MODEL_URL="${MODEL_URL:-https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/resolve/main/Qwen_Qwen3-1.7B-Q4_K_M.gguf}"
-MODEL_SHA256="${MODEL_SHA256:-72c5c3cb38fa32d5256e2fe30d03e7a64c6c79e668ad84057e3bd66e250b24fb}"
+MODEL_URL="${MODEL_URL:-https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf}"
+MODEL_SHA256="${MODEL_SHA256:-724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7}"
 MODEL_QUANT="${MODEL_QUANT:-Q4_K_M}"
 MODEL_FILE="${MODEL_FILE:-current.gguf}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

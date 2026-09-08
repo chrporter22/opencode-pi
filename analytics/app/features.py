@@ -16,3 +16,13 @@ FEATURE_NAMES = [
     "tempC",
     "diskFrac",
 ]
+
+# Per-request feature order (matches the gateway pusher's request array):
+REQUEST_FEATURE_NAMES = [
+    "log1p_promptTokens",
+    "log1p_completionTokens",
+    "log1p_totalTokens",
+    "log1p_tokensPerSecond",
+    "log1p_durationMs",
+    "error",
+]

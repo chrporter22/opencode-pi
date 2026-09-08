@@ -18,8 +18,8 @@ describe("config", () => {
     expect(cfg.llama.host).toBe("127.0.0.1");
     expect(cfg.llama.port).toBe(8000);
     expect(cfg.llama.bin).toBe("/opt/llama/llama-server");
-    expect(cfg.llama.contextSize).toBe(8192);
-    expect(cfg.model.name).toBe("Qwen3-1.7B");
+    expect(cfg.llama.contextSize).toBe(32768);
+    expect(cfg.model.name).toBe("Qwen2.5-Coder-3B-Instruct");
     expect(cfg.model.file).toBe("current.gguf");
     expect(cfg.model.containerPath).toBe("/models/current.gguf");
     expect(cfg.model.hostDir).toBe("/opt/qwen-model");

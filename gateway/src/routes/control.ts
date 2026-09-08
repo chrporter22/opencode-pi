@@ -200,8 +200,8 @@ export function controlRouter(deps: ControlDeps): Router {
   router.get("/analytics/training/status", async (_req, res) => {
     await proxyToAnalytics(deps, res, "/v1/analytics/training/status");
   });
-  router.post("/analytics/training/start", async (_req, res) => {
-    await proxyToAnalytics(deps, res, "/v1/analytics/training/start", "POST");
+  router.post("/analytics/training/start", async (req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/training/start", "POST", req.body ?? undefined);
   });
   router.post("/analytics/rebaseline", async (_req, res) => {
     await proxyToAnalytics(deps, res, "/v1/analytics/rebaseline", "POST");

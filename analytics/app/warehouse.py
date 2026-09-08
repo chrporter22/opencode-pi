@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS windows(
   nn_latency_ms REAL,
   nn_risk TEXT,
   nn_prob TEXT,
+  z BLOB,
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS requests(
@@ -107,6 +108,7 @@ class SqliteStore:
             "nn_latency_ms": "REAL DEFAULT NULL",
             "nn_risk": "TEXT DEFAULT NULL",
             "nn_prob": "TEXT DEFAULT NULL",
+            "z": "BLOB DEFAULT NULL",
         }.items():
             if name not in win_cols:
                 self.conn.execute(f"ALTER TABLE windows ADD COLUMN {name} {ddl}")
@@ -136,15 +138,16 @@ class SqliteStore:
     def insert_window(self, window_start: int, feature_vec, context, pcs, loadings, eigen,
                       risk, t2, p_value, compute_ms, created_at: int,
                       nn_latency_ms: float | None = None, nn_risk: str | None = None,
-                      nn_prob: list[float] | None = None) -> None:
+                      nn_prob: list[float] | None = None, z=None) -> None:
         self.conn.execute(
             "INSERT INTO windows(window_start, feature_vec, context, pcs, loadings, eigen,"
-            " risk, t2, p_value, compute_ms, nn_latency_ms, nn_risk, nn_prob, created_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " risk, t2, p_value, compute_ms, nn_latency_ms, nn_risk, nn_prob, z, created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (window_start, _blob(feature_vec), _blob(context), _blob(pcs),
              _blob(loadings) if loadings is not None else None, _blob(eigen),
              risk, t2, p_value, compute_ms, nn_latency_ms, nn_risk,
-             json.dumps(nn_prob) if nn_prob is not None else None, created_at),
+             json.dumps(nn_prob) if nn_prob is not None else None,
+             _blob(z), created_at),
         )
         self.conn.commit()
 
@@ -535,17 +538,19 @@ class SqliteStore:
     def raw_windows(self, limit: int = 25) -> list[dict]:
         rows = self.conn.execute(
             "SELECT id, window_start, feature_vec, risk, t2, p_value, compute_ms,"
-            " nn_latency_ms, nn_risk, created_at"
+            " nn_latency_ms, nn_risk, z, created_at"
             " FROM windows ORDER BY window_start DESC LIMIT ?",
             (int(limit),),
         ).fetchall()
         out = []
-        for rid, ws, fv, risk, t2, pv, cms, nn_ms, nn_risk, ca in rows:
+        for rid, ws, fv, risk, t2, pv, cms, nn_ms, nn_risk, z_blob, ca in rows:
             arr = _unblob(fv)
+            z_arr = _unblob(z_blob)
             out.append({
                 "id": rid,
                 "windowStart": ws,
                 "features": [round(float(x), 4) for x in arr] if arr is not None else None,
+                "z": [round(float(x), 4) for x in z_arr] if z_arr is not None else None,
                 "risk": risk,
                 "t2": round(float(t2), 4) if t2 is not None else None,
                 "pValue": round(float(pv), 6) if pv is not None else None,
@@ -574,21 +579,23 @@ class SqliteStore:
         return out
 
     def pca_cloud(self, limit: int = 300) -> list[dict]:
-        """Per-window PCA z-scores + features + risk + NN fields for the plot.
+        """Per-window PCA z-scores + raw features/z + risk + NN fields for the plot.
         Rows guard (ascending) so the explorer can build a stable cloud."""
         rows = self.conn.execute(
-            "SELECT window_start, feature_vec, pcs, risk, t2, p_value, compute_ms,"
+            "SELECT window_start, feature_vec, z, pcs, risk, t2, p_value, compute_ms,"
             " nn_latency_ms, nn_risk FROM windows WHERE pcs IS NOT NULL"
             " ORDER BY window_start DESC LIMIT ?",
             (int(limit),),
         ).fetchall()
         out = []
-        for ws, fv, pcs, risk, t2, pv, cms, nn_ms, nn_risk in reversed(rows):
+        for ws, fv, z_blob, pcs, risk, t2, pv, cms, nn_ms, nn_risk in reversed(rows):
             arr = _unblob(fv)
+            z_arr = _unblob(z_blob)
             scores = _unblob(pcs)
             out.append({
                 "windowStart": ws,
                 "features": [round(float(x), 4) for x in arr] if arr is not None else None,
+                "z": [round(float(x), 4) for x in z_arr] if z_arr is not None else None,
                 "pcs": scores.tolist() if scores is not None else [],
                 "risk": risk,
                 "t2": round(float(t2), 4) if t2 is not None else None,
@@ -598,6 +605,16 @@ class SqliteStore:
                 "nnRisk": nn_risk,
             })
         return out
+
+    def new_training_rows(self, since: int | None) -> int:
+        """Count of labeled windows strictly newer than a training watermark."""
+        if since is None:
+            return 0
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM windows WHERE risk IS NOT NULL AND window_start > ?",
+            (int(since),),
+        ).fetchone()
+        return int(row[0] or 0)
 
     def latency_history(self, limit: int = 120) -> list[dict]:
         rows = self.conn.execute(
