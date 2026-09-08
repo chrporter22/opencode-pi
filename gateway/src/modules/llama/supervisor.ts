@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { accessSync } from "node:fs";
+import { accessSync, readFileSync, readdirSync } from "node:fs";
 import type { Config } from "../../config.js";
 import type { Logger } from "../../logger.js";
 import type { RuntimeState } from "../../state.js";
@@ -11,6 +11,44 @@ export const HEALTH_PATH = "/health";
 
 export function healthUrl(base: string): string {
   return `${base.replace(/\/$/, "")}${HEALTH_PATH}`;
+}
+
+export function isLlamaServerCmdline(cmdline: string, bin: string, port: number): boolean {
+  const s = cmdline.replaceAll("\0", " ");
+  return s.includes(bin) && s.includes(`--port ${port}`);
+}
+
+export function reapStaleLlamaServers(bin: string, port: number, keepPid: number | null, logger: Logger): number {
+  const reaped: number[] = [];
+  for (const entry of readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    const pid = Number(entry);
+    if (pid === keepPid || pid === process.pid) continue;
+    let cmdline = "";
+    try {
+      cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    } catch {
+      continue;
+    }
+    if (!isLlamaServerCmdline(cmdline, bin, port)) continue;
+    try {
+      process.kill(pid, "SIGTERM");
+      reaped.push(pid);
+      setTimeout(() => {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }, 1000).unref();
+    } catch {
+      // raced with process exit
+    }
+  }
+  if (reaped.length) {
+    logger.warn(`reaped ${reaped.length} stale llama-server process(es) holding port ${port}: ${reaped.join(", ")}`);
+  }
+  return reaped.length;
 }
 
 export function buildLlamaArgs(config: Config, modelPath: string): string[] {
@@ -167,6 +205,7 @@ export function createLlamaSupervisor(opts: LlamaSupervisorOptions): LlamaSuperv
       return;
     }
     const args = buildLlamaArgs(config, config.model.containerPath);
+    reapStaleLlamaServers(config.llama.bin, config.llama.port, child?.pid ?? null, logger);
     logger.info(`Spawning ${bin} ${args.join(" ")}`);
     state.setLlama("starting");
     state.setModelLoaded(false);

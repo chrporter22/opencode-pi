@@ -106,7 +106,13 @@ app.use(
 
 app.use("/v1", requireAuth(auth, "inference"), v1Router({ config, state, logger: log, requests }));
 
-app.use(express.static(path.resolve("public")));
+app.use(
+  express.static(path.resolve("public"), {
+    setHeaders(res) {
+      res.setHeader("Cache-Control", "no-store");
+    },
+  })
+);
 
 const httpServer = createServer(app);
 wsServer = startWsServer({ httpServer, auth, state, metrics, logger: log, requests });

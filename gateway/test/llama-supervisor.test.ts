@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { createLogger } from "../src/logger.js";
-import { buildLlamaArgs, createTaskTimingParser, waitForHealth } from "../src/modules/llama/supervisor.js";
+import { buildLlamaArgs, createTaskTimingParser, isLlamaServerCmdline, waitForHealth } from "../src/modules/llama/supervisor.js";
 import { makeConfig } from "./helpers.js";
 
 describe("buildLlamaArgs", () => {
@@ -51,6 +51,20 @@ function startHealthServer(healthy: () => boolean): { url: string; setHealthy: (
 
 afterEach(async () => {
   while (servers.length) await new Promise<void>((r) => servers.pop()?.close(() => r()));
+});
+
+describe("isLlamaServerCmdline", () => {
+  const bin = "/opt/llama/llama-server";
+  it("matches a llama-server cmdline on the configured port", () => {
+    expect(isLlamaServerCmdline("/opt/llama/llama-server\0--model\0/models/current.gguf\0--host\0127.0.0.1\0--port\08000\0--ctx-size\032768", bin, 8000)).toBe(true);
+    expect(isLlamaServerCmdline("/opt/llama/llama-server --model /models/current.gguf --port 8000 --threads 4", bin, 8000)).toBe(true);
+  });
+
+  it("rejects other binaries and other ports", () => {
+    expect(isLlamaServerCmdline("/usr/bin/python --port 8000", bin, 8000)).toBe(false);
+    expect(isLlamaServerCmdline("/opt/llama/llama-server --port 9000", bin, 8000)).toBe(false);
+    expect(isLlamaServerCmdline("", bin, 8000)).toBe(false);
+  });
 });
 
 describe("createTaskTimingParser", () => {

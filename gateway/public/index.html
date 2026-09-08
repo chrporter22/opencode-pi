@@ -45,6 +45,7 @@
     --glow: rgba(196,167,231,.35); --sidebar: #13111e; --bar: #13111e;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { overflow-x: hidden; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
     background:
@@ -108,7 +109,7 @@
   }
   .card {
     background: var(--card); border: 1px solid var(--border); border-radius: 4px;
-    padding: 16px 16px 14px; min-width: 0; max-width: 100%; border-top: 3px solid var(--border);
+    padding: 16px 16px 14px; min-width: 0; max-width: 100%; overflow-x: auto; border-top: 3px solid var(--border);
     scroll-margin-top: 12px; transition: box-shadow .18s, transform .18s;
   }
   .card:hover { box-shadow: 0 6px 22px -8px var(--glow); transform: translateY(-1px); }
@@ -133,7 +134,7 @@
     .dashboard { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   @media (min-width: 1024px) { .content { max-width: 1280px; } }
-  .table-scroll { overflow-x: auto; }
+  .table-scroll { overflow-x: auto; max-width: 100%; }
   table.stats { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
   table.stats td { padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
   table.stats td.k { color: var(--dim); }
@@ -292,7 +293,7 @@
   #dash-sync button { padding: 5px 11px; font-size: 12px; margin: 0; }
   #syncList { margin-top: 2px; }
   #dash-sync .sync-item { padding: 1px 0; font-size: 11.5px; }
-  .filter-bar { display: flex; gap: 6px; margin: 8px 0; }
+  .filter-bar { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; }
   .filter-bar .f-sep { align-self: center; width: 1px; height: 14px; background: var(--border); margin: 0 2px; }
   .filter-bar button {
     margin: 0; padding: 3px 12px; font-size: 12px; border-radius: 3px;
@@ -490,7 +491,7 @@
     <div class="topbar">
       <h1><span class="dot" id="statusDot"></span>&nbsp;Control center<span class="sub">opencode-pi gateway · <span id="bModel">Qwen2.5-Coder-3B-Instruct</span></span></h1>
       <span class="spacer"></span>
-      <div class="row actions" style="flex:1 0 auto; justify-content:flex-end">
+      <div class="row actions" style="flex:1 1 auto; flex-wrap:wrap; justify-content:flex-end">
         <input type="password" id="key" placeholder="Admin API key" autocomplete="off" style="width:220px;margin:0">
         <input type="password" id="iKey" placeholder="Inference key (playground)" autocomplete="off" style="width:220px;margin:0">
         <button id="btnTheme" style="margin:0">Theme: Dark</button>
@@ -1024,6 +1025,7 @@
         </div>
         <div class="card ac-pg full">
           <h2>Endpoints</h2>
+          <div class="table-scroll">
           <table class="doc">
             <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr></thead>
             <tbody>
@@ -1061,9 +1063,11 @@
               <tr><td class="method">WS</td><td class="mono">/ws?key=…</td><td>admin</td><td>Realtime event stream (status, requests, logs, metrics)</td></tr>
             </tbody>
           </table>
+          </div>
         </div>
         <div class="card ac-conn full">
           <h2>Environment variables</h2>
+          <div class="table-scroll">
           <table class="doc">
             <thead><tr><th>Variable</th><th>Purpose</th><th>Default</th></tr></thead>
             <tbody>
@@ -1101,6 +1105,7 @@
               <tr><td class="k">REDIS_URL</td><td>Redis backing store URL</td><td class="mono">redis://redis:6379/0</td></tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </section>
@@ -1224,11 +1229,20 @@
     const an = q("anNnChip"); if (an) { an.textContent = "tf-lite " + txt; }
     const ml = q("mlNnChip"); if (ml) { ml.textContent = "tf-lite " + txt; }
   }
+  let teleBase = "";
   function updateTeleTicker() {
     const tele = q("mlTeleTicker");
     if (!tele) return;
-    let t = tele.textContent.replace(/ · nn .*/, "");
-    if (liveNn && liveNn.label) t += " · nn " + nnTxt(liveNn.label, liveNn.prob);
+    let t = teleBase ? teleBase + " · " : "";
+    if (!liveNn || !liveNn.label) { t += "nn —"; }
+    else {
+      t += "nn " + liveNn.label;
+      if (Array.isArray(liveNn.prob) && liveNn.prob.length === 3) {
+        t += " " + liveNn.prob
+          .map((p, i) => NZ[i] + " " + Math.round(p * 100) + "%")
+          .join(" · ");
+      }
+    }
     tele.textContent = t;
   }
 
@@ -1384,13 +1398,13 @@
     q("sTps").textContent = sysState.tokensPerSecond != null ? sysState.tokensPerSecond.toFixed(1) : "—";
     q("sApm").textContent = sysState.requestsPerMinute != null ? String(sysState.requestsPerMinute) : "—";
     q("sAt").textContent = sysState.timestamp ? new Date(sysState.timestamp).toLocaleTimeString() : "—";
-    const teleEl = q("mlTeleTicker");
-    if (teleEl) {
-      const tv = [sysState.cpu, sysState.memory, diskPct];
-      teleEl.textContent = "[" + tv.map((v) => (v != null ? v.toFixed(0) + "%" : "—")).join(" · ") + "]" +
-        (sysState.sampleMs != null ? " · " + sysState.sampleMs.toFixed(1) + "ms" : "");
-      updateTeleTicker();
-    }
+    teleBase = [
+      sysState.cpu != null ? "cpu " + sysState.cpu.toFixed(0) + "%" : null,
+      sysState.memory != null ? "mem " + sysState.memory.toFixed(0) + "%" : null,
+      diskPct != null ? "disk " + diskPct.toFixed(0) + "%" : null,
+      sysState.sampleMs != null ? "sample " + sysState.sampleMs.toFixed(1) + "ms" : null
+    ].filter(Boolean).join(" · ");
+    updateTeleTicker();
     pushMetric("cpu", sysState.cpu);
     pushMetric("mem", sysState.memory);
     pushMetric("temp", sysState.temperature);
@@ -1887,11 +1901,15 @@
   function shortLabel(n) {
     return String(n || "f").replace(/log1p_/g, "").replace(/([A-Z])/g, " $1").trim().slice(0, 12);
   }
+  const FEAT10 = ["log1p_requestsPerMinute","errorRate","log1p_p95LatMs","log1p_p99LatMs","log1p_p95TokPerSec","log1p_p99TokPerSec","cpuFrac","memFrac","tempC","diskFrac"];
+  const BOX_LABELS = { cpuFrac: "cpu", memFrac: "mem", tempC: "temp", log1p_p95TokPerSec: "tok/s" };
+  const BOX_FEATURES = ["cpuFrac", "memFrac", "tempC", "log1p_p95TokPerSec"];
+  const boxLabel = (n) => BOX_LABELS[n] || shortLabel(n);
   function renderTs() {
     const cv = q("barTs");
     if (!cv) return;
     const { ctx, w, h } = getCtx(cv);
-    const hist = mlHist.slice(-120);
+    const hist = mlHist.slice(-20);
     if (!hist.length) {
       ctx.fillStyle = "rgba(255,255,255,.3)";
       ctx.font = "12px " + cssv("--mono");
@@ -1932,16 +1950,30 @@
       $s("mlBoxLabel", "");
       return;
     }
+    // Only the live telemetry features go on the box plot: cpu · mem · temp · tok/s
     const last = rows[rows.length - 1];
-    const names = last.featureNames || [];
-    const dim = names.length || 6;
+    const names = (last.featureNames && last.featureNames.length) ? last.featureNames : FEAT10;
+    const want = BOX_FEATURES.filter((f) => names.indexOf(f) >= 0);
+    if (!want.length) {
+      ctx.fillStyle = "rgba(255,255,255,.3)";
+      ctx.font = "12px " + cssv("--mono");
+      ctx.fillText("box-plot features (cpu · mem · temp · tok/s) all disabled in the feature filter", 12, 20);
+      $s("mlBoxLabel", "");
+      return;
+    }
+    const dim = want.length;
+    const idxOf = (row, name) => {
+      const rn = (row.featureNames && row.featureNames.length) ? row.featureNames : names;
+      return rn.indexOf(name);
+    };
     const per = [];
     for (let j = 0; j < dim; j++) {
+      const name = want[j];
       const vals = [];
       for (const r of rows) {
-        let a = r.z || r.features || [];
-        if (a.length > dim) a = a.slice(0, dim);
-        const v = a[j];
+        const a = r.z || r.features || [];
+        const i = idxOf(r, name);
+        const v = i >= 0 ? a[i] : null;
         if (v != null && !isNaN(v)) vals.push(+v);
       }
       per.push(vals.length ? vals.sort((p, qq) => p - qq) : null);
@@ -1977,9 +2009,14 @@
     ctx.fillStyle = "rgba(220,160,60,.85)";
     ctx.font = (few ? "11" : "10") + "px " + cssv("--mono");
     ctx.fillText("high ±" + high + "σ", w - 74, toY(high) - 3);
-    const lastArr = last.z && last.z.length >= dim ? last.z : (last.features || []).slice(0, dim);
-    const curZ = lastArr && lastArr.length ? lastArr : null;
-    const curVals = (last.features && last.features.length >= dim) ? last.features : null;
+    const curZ = [], curVals = [];
+    for (let j = 0; j < dim; j++) {
+      const i = idxOf(last, want[j]);
+      const z = i >= 0 && (last.z || [])[i];
+      const f = i >= 0 && (last.features || [])[i];
+      curZ.push(z != null && !isNaN(+z) ? +z : null);
+      curVals.push(f != null && !isNaN(+f) ? +f : null);
+    }
     per.forEach((d, j) => {
       if (!d) return;
       const x = j * slot + slot / 2;
@@ -2018,7 +2055,7 @@
         ctx.textAlign = "center";
         ctx.fillStyle = "rgba(255,255,255,.8)";
         ctx.font = "11px " + cssv("--mono");
-        ctx.fillText(shortLabel(names[j]), x, h - 26);
+        ctx.fillText(boxLabel(want[j]), x, h - 26);
         const vRaw = curVals && curVals[j] != null ? (+curVals[j]).toFixed(2) : null;
         ctx.font = "10px " + cssv("--mono");
         ctx.fillStyle = curZ && curZ[j] != null
@@ -2032,7 +2069,7 @@
         ctx.textAlign = "right";
         ctx.fillStyle = "rgba(255,255,255,.65)";
         ctx.font = "10px " + cssv("--mono");
-        ctx.fillText(shortLabel(names[j]), 0, 0);
+        ctx.fillText(boxLabel(want[j]), 0, 0);
         ctx.restore();
       }
       // current window marker
@@ -2044,7 +2081,7 @@
         ctx.closePath(); ctx.fill();
       }
     });
-    $s("mlBoxLabel", "z per active feature (" + dim + ") across " + rows.length + " cloud windows · watch ±" + watch + "σ · high ±" + high + "σ · scale capped ±8σ · value under name = latest raw · white ♦ = latest z · ▲ = clipped extreme");
+    $s("mlBoxLabel", "z per live feature (cpu · mem · temp · tok/s) across " + rows.length + " cloud windows · watch ±" + watch + "σ · high ±" + high + "σ · scale capped ±8σ · value under name = latest raw · white ♦ = latest z · ▲ = clipped extreme");
   }
   function renderMlSpark() {
     const t2 = mlHist.map((x) => (x.drift != null ? +x.drift : null));
