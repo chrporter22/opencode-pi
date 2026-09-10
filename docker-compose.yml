@@ -19,6 +19,21 @@ services:
       - redis
     restart: unless-stopped
 
+  ui-dev:
+    image: node:22-trixie-slim
+    working_dir: /app
+    command: bash -lc "npm install --no-audit --no-fund && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./ui:/app
+      - ui-node_modules:/app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - gateway-dev
+    restart: unless-stopped
+
   gateway-test:
     build:
       context: .
@@ -69,3 +84,4 @@ services:
 
 volumes:
   redis-data:
+  ui-node_modules:

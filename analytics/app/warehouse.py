@@ -87,8 +87,38 @@ CREATE TABLE IF NOT EXISTS models(
   deleted_at INTEGER,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS backtest_runs(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER,
+  state TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  model_watermark INTEGER,
+  window_from INTEGER,
+  window_to INTEGER,
+  rows INTEGER,
+  correct INTEGER,
+  accuracy REAL,
+  precision REAL,
+  recall REAL,
+  f1 REAL,
+  error TEXT,
+  metadata TEXT
+);
+CREATE TABLE IF NOT EXISTS backtest_samples(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id INTEGER NOT NULL,
+  window_start INTEGER NOT NULL,
+  actual TEXT,
+  nn_risk TEXT NOT NULL,
+  nn_prob TEXT NOT NULL,
+  model_watermark INTEGER,
+  match INTEGER
+);
 CREATE INDEX IF NOT EXISTS idx_windows_start ON windows(window_start);
 CREATE INDEX IF NOT EXISTS idx_requests_start ON requests(started_at);
+CREATE INDEX IF NOT EXISTS idx_bt_samples_run ON backtest_samples(run_id);
+CREATE INDEX IF NOT EXISTS idx_bt_samples_start ON backtest_samples(window_start);
 """
 
 
@@ -615,6 +645,154 @@ class SqliteStore:
             (int(since),),
         ).fetchone()
         return int(row[0] or 0)
+
+    def relabel_windows(self, p_watch: float, p_high: float,
+                        mode: str = "p_value", z_watch: float = 1.0, z_high: float = 1.5) -> dict:
+        """Recompute the drift label of every window with stored PCs using either
+        Hotelling T² p-value tiers or PCA Z-score thresholds; upserts risk/t2/p_value
+        back into SQLite.
+
+        PCA z-scores, loadings and eigen stay untouched (still used for the
+        cloud/bars display). Returns the new class distribution.
+        """
+        from .mathlib import hotelling, label_from_p, risk_label  # noqa: PLC0415
+
+        rows = self.conn.execute(
+            "SELECT id, window_start, pcs FROM windows WHERE pcs IS NOT NULL"
+            " ORDER BY window_start ASC"
+        ).fetchall()
+        counts: dict[str, int] = {"normal": 0, "watch": 0, "high": 0}
+        updated = 0
+        for rid, _ws, blob in rows:
+            pcz = _unblob(blob)
+            if pcz is None or pcz.size == 0:
+                continue
+            t2, p_value = hotelling(pcz)
+            if mode == "z_score":
+                label = risk_label(pcz, z_watch, z_high)
+            else:
+                label = label_from_p(p_value, p_watch, p_high)
+            counts[label] = counts.get(label, 0) + 1
+            self.conn.execute(
+                "UPDATE windows SET risk=?, t2=?, p_value=? WHERE id=?",
+                (label, t2, p_value, rid),
+            )
+            updated += 1
+            if updated % 500 == 0:
+                self.conn.commit()
+        self.conn.commit()
+        return {"updated": updated, "normal": counts.get("normal", 0),
+                "watch": counts.get("watch", 0), "high": counts.get("high", 0),
+                "mode": mode, "pWatch": p_watch, "pHigh": p_high,
+                "zWatch": z_watch, "zHigh": z_high}
+
+    def insert_backtest_run(self, mode: str, started_at: int) -> int:
+        self.conn.execute(
+            "INSERT INTO backtest_runs(started_at, state, mode) VALUES(?,?,?)",
+            (int(started_at), "running", mode),
+        )
+        self.conn.commit()
+        return int(self.conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+    def finish_backtest_run(self, run_id: int, state: str, *, finished_at: int | None = None,
+                            model_watermark: int | None = None, window_from: int | None = None,
+                            window_to: int | None = None, rows: int | None = None,
+                            correct: int | None = None, accuracy: float | None = None,
+                            precision: float | None = None, recall: float | None = None,
+                            f1: float | None = None, error: str | None = None,
+                            metadata: dict | None = None) -> None:
+        self.conn.execute(
+            "UPDATE backtest_runs SET finished_at=?, state=?, model_watermark=?,"
+            " window_from=?, window_to=?, rows=?, correct=?, accuracy=?,"
+            " precision=?, recall=?, f1=?, error=?, metadata=? WHERE id=?",
+            (finished_at if finished_at is not None else now_ms(), state,
+             model_watermark, window_from, window_to, rows, correct, accuracy,
+             precision, recall, f1, error,
+             json.dumps(metadata) if metadata else None, int(run_id)),
+        )
+        self.conn.commit()
+
+    def insert_backtest_sample(self, run_id: int, window_start: int, actual: str | None,
+                               nn_risk: str, nn_prob: list[float],
+                               model_watermark: int | None) -> None:
+        self.conn.execute(
+            "INSERT INTO backtest_samples(run_id, window_start, actual, nn_risk,"
+            " nn_prob, model_watermark, match)"
+            " VALUES(?,?,?,?,?,?,?)",
+            (int(run_id), int(window_start), actual, nn_risk,
+             json.dumps([float(p) for p in nn_prob]) if nn_prob else None,
+             model_watermark,
+             1 if actual is not None and actual == nn_risk else 0),
+        )
+
+    def backtest_runs(self, limit: int = 20) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id, started_at, finished_at, state, mode, model_watermark,"
+            " window_from, window_to, rows, correct, accuracy, precision, recall,"
+            " f1, error FROM backtest_runs ORDER BY id DESC LIMIT ?",
+            (int(limit),),
+        ).fetchall()
+        out = []
+        for r in rows:
+            out.append({
+                "runId": r[0], "startedAt": r[1], "finishedAt": r[2], "state": r[3],
+                "mode": r[4], "modelWatermark": r[5], "windowFrom": r[6],
+                "windowTo": r[7], "rows": r[8], "correct": r[9],
+                "accuracy": round(float(r[10]), 5) if r[10] is not None else None,
+                "precision": round(float(r[11]), 5) if r[11] is not None else None,
+                "recall": round(float(r[12]), 5) if r[12] is not None else None,
+                "f1": round(float(r[13]), 5) if r[13] is not None else None,
+                "error": r[14],
+            })
+        return out
+
+    def backtest_samples(self, limit: int = 200, run_id: int | None = None) -> list[dict]:
+        if run_id is None:
+            row = self.conn.execute(
+                "SELECT id FROM backtest_runs ORDER BY id DESC LIMIT 1").fetchone()
+            if row is None:
+                return []
+            run_id = int(row[0])
+        rows = self.conn.execute(
+            "SELECT window_start, actual, nn_risk, nn_prob, model_watermark, match"
+            " FROM backtest_samples WHERE run_id = ? ORDER BY window_start ASC LIMIT ?",
+            (int(run_id), int(limit)),
+        ).fetchall()
+        out = []
+        for ws, actual, nn, prob, wm, match in rows:
+            out.append({
+                "windowStart": ws,
+                "actual": actual,
+                "nnRisk": nn,
+                "nnProb": json.loads(prob) if prob else [],
+                "modelWatermark": wm,
+                "match": bool(match),
+            })
+        return out
+
+    def backtest_window_count(self, since: int | None = None, limit: int | None = None) -> int:
+        sql = "SELECT COUNT(*) FROM windows WHERE feature_vec IS NOT NULL"
+        params: list = []
+        if since is not None:
+            sql += " AND window_start > ?"
+            params.append(int(since))
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        row = self.conn.execute(sql, params).fetchone()
+        return int(row[0] or 0)
+
+    def backtest_windows(self, since: int | None = None, limit: int | None = None) -> list[tuple]:
+        """(window_start, actual, feature_vec) for windows with a feature vector."""
+        sql = "SELECT window_start, risk, feature_vec FROM windows" \
+              " WHERE feature_vec IS NOT NULL"
+        params: list = []
+        if since is not None:
+            sql += " AND window_start > ?"
+            params.append(int(since))
+        sql += " ORDER BY window_start ASC"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        return self.conn.execute(sql, params).fetchall()
 
     def latency_history(self, limit: int = 120) -> list[dict]:
         rows = self.conn.execute(

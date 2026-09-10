@@ -109,10 +109,19 @@ Applies to every project with a frontend/backend split.
 
 # Project-Specific Rules
 
-<!--
-Add rules specific to this project below: architecture decisions, logging vendor,
-tenant model, UI direction, deviations from the engineering standards, etc.
-These sit on top of the mandatory rules and engineering standards above.
--->
+## UI (React + Vite + Tailwind, `ui/` — serves via `gateway/public/`)
 
-(None yet.)
+- The control-center UI lives in `ui/` and is served by the gateway from
+  `gateway/public/`. The built SPA is copied there: `cp ui/dist/index.html
+  gateway/public/` + `cp ui/dist/assets/* gateway/public/assets/` (one-shot swap;
+  the dev compose service and the production Dockerfile `ui` stage alias the same
+  dist). Zero gateway runtime changes for the UI.
+- The built bundle is authoritative: after ANY UI source change, rebuild in a
+  node:22 container (`npm ci && npx tsc --noEmit && npx vite build && npx vitest
+  run`), re-copy `dist` into `gateway/public/`, and re-run the Playwright SPA sweep
+  at the gateway origin. The Vite dev server (HMR) does NOT validate the shipped
+  bundle.
+- Regression bar (Playwright, `pi-sweep`): all 9 views render, zero console/page
+  errors, WS + wire connected, zero page-level horizontal overflow (cards own inner
+  `overflow-x:auto`; fixed 220px rail = parity with legacy).
+- Detail records: `.ai/decisions/ui-refactor/` and `.ai/sessions/ui-refactor/`.

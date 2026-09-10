@@ -1,6 +1,6 @@
 # opencode-pi
 
-A self-hosted, LAN-only local AI control center for a Raspberry Pi 5. Runs a quantized Qwen2.5-Coder-3B-Instruct (Q4_K_M) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on your local network, and ships a clean, single-file browser control center for monitoring and operating the system.
+A self-hosted, LAN-only local AI control center for a Raspberry Pi 5. Runs a quantized Qwen2.5-Coder-3B-Instruct (Q4_K_M) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on your local network, and ships a React + Vite + Tailwind browser control center (built from `ui/` into `gateway/public/`) for monitoring and operating the system.
 
 ## What it does
 
@@ -15,7 +15,7 @@ A self-hosted, LAN-only local AI control center for a Raspberry Pi 5. Runs a qua
 
 ```
 LAN ──► Express Gateway :8080 (single LAN entry point)
-           ├─ GET /        → static control center (gateway/public/index.html)
+           ├─ GET /        → static control center (React SPA, ui/ → gateway/public/)
            ├─ /api/*       → control plane + analytics proxies (admin key)
            ├─ /api/analytics/stream → live SSE (admin key)
            ├─ /v1/*        → OpenAI API, reverse-proxied (inference key)
@@ -45,21 +45,24 @@ LAN ──► Express Gateway :8080 (single LAN entry point)
 ```
 opencode-pi/
 ├── docker-compose.yml
-├── Dockerfile               ← small: Node gateway only
+├── Dockerfile               ← small: Node gateway only (TS compiled)
 ├── .env.example
-├── model/                   ← documents the model-as-data convention
-├── analytics/               ← planned analytics + analytics-train services (PRD §6.13, docs/analytics-layer.md)
+├── ui/                      ← control-center UI (React + Vite + Tailwind, TS)
 ├── gateway/
-│   ├── public/index.html    ← single-file control center UI
+│   ├── public/              ← served by express.static: index.html + assets/
+│   │   └── index.html       ← built SPA copied here from ui/dist (one-shot swap)
 │   └── src/                 ← Express + http-proxy + auth + model mgmt
 │       ├── model/           ← atomic model download/install/ensure (actions under model/actions/)
 │       └── modules/llama/   ← llama-server supervisor + shields + stats
+├── analytics/               ← live analytics & risk microservice (Python/FastAPI; PRD §6.13, README.md in analytics/)
 ├── docs/
 │   └── analytics-layer.md   ← analytics & risk layer design (data contracts)
+├── model/                   ← documents the model-as-data convention
 ├── scripts/
 │   ├── install.sh           ← provision llama.cpp into /opt/llama (host)
 │   ├── update.sh            ← update llama runtime on host
 │   └── cleanup.sh           ← remove known temp artifacts only
+├── .ai/                     ← agent memory (sessions/ + decisions/, see .ai/README.md)
 ├── PRD.md                   ← full product requirements & API spec
 └── README.md
 ```
@@ -117,6 +120,25 @@ Do **not** point anything at `<pi-ip>:8000` — `llama-server` is internal only.
 
 For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `LLAMA_DIR` / `MODEL_DIR` / `LLAMA_RELEASE` overrides and need no sudo when pointed at a writable temp directory.
 
+## UI development (React + Vite + Tailwind)
+
+The control center lives in `ui/` and is served by the gateway from `gateway/public/`
+— the built SPA is copied there after every change. Zero gateway runtime changes.
+
+- **Dev:** `docker compose up ui-dev` runs the Vite dev server on `:5173` with a
+  proxy for `/api`, `/v1`, `/ws`, `/health` to the gateway. It does **not** validate
+  the shipped bundle (Vite 5.4 blocks non-localhost Host headers — `allowedHosts` is
+  already configured in `ui/vite.config.ts`).
+- **Build + verify (authoritative):** in a node:22 container —
+  `npm ci && npx tsc --noEmit && npx vite build && npx vitest run` — then copy the
+  result: `cp ui/dist/index.html gateway/public/index.html` and
+  `cp ui/dist/assets/* gateway/public/assets/*`.
+- **Regression bar:** a Playwright sweep (`pi-sweep` image, `ui-sweep-spa.mjs`) must
+  show all 9 views rendering with zero console/page errors, WS + wire connected, and
+  zero page-level horizontal overflow (cards own inner `overflow-x:auto`; the fixed
+  220px rail matches legacy). Detail records and rationale live in
+  `.ai/sessions/ui-refactor/` and `.ai/decisions/ui-refactor/`.
+
 ## Environment summary
 
 | Variable              | Purpose                          | Default       |
@@ -169,9 +191,11 @@ For local testing of the scripts, `install.sh`/`update.sh`/`cleanup.sh` honor `L
 
 ## Control center
 
-The single-file UI at `gateway/public/index.html` (served at `http://<pi-ip>:8080`) covers
-connection (admin key), the model panel (name, quant, status, size, install date, tok/s,
-download progress, restart/update), and live realtime events over `/ws`.
+The control-center UI (React + Vite + Tailwind SPA at `ui/`, served from
+`gateway/public/` at `http://<pi-ip>:8080`) covers connection (admin key), the model
+panel (name, quant, status, size, install date, tok/s, download progress,
+restart/update), and live realtime events over `/ws`. See **UI development** above for
+the build/rebuild/regression workflow.
 
 ### Control Center v2
 
@@ -266,6 +290,7 @@ Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD
 
 - [`PRD.md`](PRD.md) — full product requirements: numbered requirement list (1–69), API and WebSocket specifications, model lifecycle, environment configuration, security, acceptance criteria, design principles, and future scope.
 - [`docs/analytics-layer.md`](docs/analytics-layer.md) — analytics & risk layer design: feature/key/embedding schema and service↔service data contracts.
+- [`analytics/README.md`](analytics/README.md) — analytics service operation: modules, pipeline, config, tests.
 
 ## Status
 
@@ -283,10 +308,12 @@ Full data contracts: [`docs/analytics-layer.md`](docs/analytics-layer.md) · PRD
   `/v1/models` id `Qwen2.5-Coder-3B-Instruct`, SSE tokens flowing, tok/s surfaced in `/api/system`)
 - [x] Control Center v2: streams table (`GET /api/requests` + `request.*` WS), Playground,
   Viridis theme toggle, JetBrains Mono Nerd Font, no-overlap layout (PRD §6.12, §9.4–9.7)
-- [ ] Analytics & risk layer: Python microservice (analytics + analytics-train), webhook
-  ingest, ML serving layer (WS + SSE), EWMA + PCA top-3-PC ±1.5σ label, drift detection,
-  SQLite vector store + warehoused Redis, gateway fan-out, orchestrator UI (PRD §6.13 — docs
-  refreshed 2026-09-06, implementation pending)
+- [x] Analytics & risk layer: Python microservice (analytics + analytics-train), webhook
+  ingest, ML serving layer (WS + SSE), TF-Lite NN risk + EWMA + PCA drift, SQLite vector
+  store + warehoused Redis, gateway fan-out, ML Analytics UI (PRD §6.13, analytics/README.md)
+- [x] UI refactor: `ui/` React + Vite + Tailwind SPA (9 views), built into
+  `gateway/public/`, production image + Playwright regression verified
+  (`.ai/sessions/ui-refactor/`)
 
 ## Getting started from your laptop
 

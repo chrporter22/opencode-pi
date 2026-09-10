@@ -23,6 +23,8 @@ class Config:
     pca_components: int
     watch_z: float
     high_z: float
+    label_p_watch: float
+    label_p_high: float
     ml_dir: str
     model_name: str
     train_min_rows: int
@@ -50,6 +52,8 @@ def load_config(env: dict | None = None) -> Config:
         pca_components=int(env.get("ANALYTICS_PCA_COMPONENTS", "6")),
         watch_z=float(env.get("ANALYTICS_PCA_WATCH_Z", "1.0")),
         high_z=float(env.get("ANALYTICS_PCA_HIGH_Z", "1.5")),
+        label_p_watch=float(env.get("ANALYTICS_LABEL_P_WATCH", "0.10")),
+        label_p_high=float(env.get("ANALYTICS_LABEL_P_HIGH", "0.05")),
         ml_dir=ml_dir,
         model_name=env.get("ANALYTICS_EMBED_MODEL", "risk.net"),
         train_min_rows=int(env.get("ANALYTICS_TRAIN_MIN_ROWS", "4000")),

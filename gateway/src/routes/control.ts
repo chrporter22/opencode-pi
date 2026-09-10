@@ -203,6 +203,32 @@ export function controlRouter(deps: ControlDeps): Router {
   router.post("/analytics/training/start", async (req, res) => {
     await proxyToAnalytics(deps, res, "/v1/analytics/training/start", "POST", req.body ?? undefined);
   });
+  router.post("/analytics/relabel", async (req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/relabel", "POST", req.body ?? undefined);
+  });
+  router.post("/analytics/watermark/clear", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/watermark/clear", "POST");
+  });
+  router.post("/analytics/backtest", async (req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/backtest", "POST", req.body ?? undefined);
+  });
+  router.get("/analytics/backtest/status", async (_req, res) => {
+    await proxyToAnalytics(deps, res, "/v1/analytics/backtest/status");
+  });
+  router.get("/analytics/backtest/runs", async (req, res) => {
+    await proxyToAnalytics(
+      deps,
+      res,
+      `/v1/analytics/backtest/runs${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}`
+    );
+  });
+  router.get("/analytics/backtest/samples", async (req, res) => {
+    await proxyToAnalytics(
+      deps,
+      res,
+      `/v1/analytics/backtest/samples${req.query.limit ? `?limit=${encodeURIComponent(String(req.query.limit))}` : ""}${req.query.run_id ? `&run_id=${encodeURIComponent(String(req.query.run_id))}` : ""}`
+    );
+  });
   router.post("/analytics/rebaseline", async (_req, res) => {
     await proxyToAnalytics(deps, res, "/v1/analytics/rebaseline", "POST");
   });

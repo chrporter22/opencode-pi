@@ -35,7 +35,7 @@ class TFLiteClassifier:
 
     def _build(self) -> None:
         path = model_tflite_path(self.cfg)
-        if not path.exists():
+        if not path.exists() or path.stat().st_size < 1:
             self._interp = None
             self._mtime = None
             return
@@ -51,7 +51,7 @@ class TFLiteClassifier:
 
     def classify(self, x: np.ndarray) -> dict | None:
         path = model_tflite_path(self.cfg)
-        if not path.exists():
+        if not path.exists() or path.stat().st_size < 1:
             self.reset()
             return None
         mtime = path.stat().st_mtime

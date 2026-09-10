@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
+from .backtest import Backtester
 from .config import load_config
 from .cron import Cron
 from .events import EventBus
@@ -54,6 +55,8 @@ def create_app(env: dict | None = None, analyzer: Analyzer | None = None, traine
         analyzer = Analyzer(cfg, store, redis, events=events, runtime=runtime)
     if trainer is None:
         trainer = TrainingOrchestrator(cfg, store, redis, events=events, runtime=runtime)
+    backtester = Backtester(cfg, store, redis, events=events, runtime=runtime)
+    trainer.clear_stuck()
 
     # Escalate every live event to the gateway WS fan-out (typed events).
     events.subscribe(make_push_to_gateway(cfg))
@@ -230,6 +233,74 @@ def create_app(env: dict | None = None, analyzer: Analyzer | None = None, traine
     @app.get("/v1/analytics/training/runs")
     async def training_runs(limit: int = Query(default=20, ge=1, le=100)):
         return store.training_runs(limit)
+
+    @app.post("/v1/analytics/relabel", dependencies=[Depends(auth)])
+    async def relabel(payload: dict | None = None):
+        """Recompute window risk levels using either p-value tiers or PCA z-score
+        thresholds and upsert them back into the warehouse. Optionally retrain."""
+        payload = payload or {}
+        mode = str(payload.get("mode", "p_value"))
+        mode = mode if mode in ("p_value", "z_score") else "p_value"
+        p_watch = float(payload["pWatch"]) if payload.get("pWatch") is not None else runtime.label_p_watch
+        p_high = float(payload["pHigh"]) if payload.get("pHigh") is not None else runtime.label_p_high
+        watch_z = float(payload["watchZ"]) if payload.get("watchZ") is not None else runtime.watch_z
+        high_z = float(payload["highZ"]) if payload.get("highZ") is not None else runtime.high_z
+
+        patch: dict[str, object] = {"labelMode": mode}
+        if payload.get("pWatch") is not None:
+            patch["labelPWatch"] = p_watch
+        if payload.get("pHigh") is not None:
+            patch["labelPHigh"] = p_high
+        if payload.get("watchZ") is not None:
+            patch["watchZ"] = watch_z
+        if payload.get("highZ") is not None:
+            patch["highZ"] = high_z
+        runtime.save(patch)
+
+        result = store.relabel_windows(
+            p_watch=p_watch, p_high=p_high,
+            mode=mode, z_watch=watch_z, z_high=high_z,
+        )
+        analyzer._check_reset()  # noqa: SLF001
+
+        retrain_started = False
+        if payload.get("retrain"):
+            retrain_started = trainer.start(analyzer, mode="full")
+
+        result["retrain"] = retrain_started
+        events.emit({"type": "analytics.relabel", "timestamp": now_ms(), **result})
+        return result
+
+    @app.post("/v1/analytics/watermark/clear", dependencies=[Depends(auth)])
+    async def watermark_clear():
+        runtime.set_watermark(None)
+        trainer.state["trainedUpTo"] = None
+        trainer._persist()  # noqa: SLF001
+        return {"ok": True, "watermark": None, "config": _config_doc()}
+
+    @app.get("/v1/analytics/backtest/status")
+    async def backtest_status():
+        bt = backtester.status()
+        bt["runs"] = store.backtest_runs(5)
+        return bt
+
+    @app.post("/v1/analytics/backtest", dependencies=[Depends(auth)])
+    async def backtest_start(payload: dict | None = None):
+        mode = (payload or {}).get("mode", "current")
+        started = backtester.start(mode, analyzer, trainer)
+        if not started:
+            return {"ok": False, "mode": mode,
+                    "detail": "a backtest is already running"}
+        return {"ok": True, "mode": mode}
+
+    @app.get("/v1/analytics/backtest/runs")
+    async def backtest_runs(limit: int = Query(default=20, ge=1, le=100)):
+        return store.backtest_runs(limit)
+
+    @app.get("/v1/analytics/backtest/samples")
+    async def backtest_samples(limit: int = Query(default=200, ge=1, le=500),
+                               run_id: int | None = Query(default=None)):
+        return store.backtest_samples(limit, run_id)
 
     @app.get("/v1/analytics/stream")
     async def stream(request: Request, x_ingest_secret: str | None = Header(default=None)):

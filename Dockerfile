@@ -12,6 +12,17 @@ COPY gateway/public ./public
 
 RUN npm run build
 
+# ---- ui build stage ----
+FROM node:22-bookworm-slim AS ui
+
+WORKDIR /app
+
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY ui/ ./
+RUN npm run build
+
 # ---- runtime stage (small, Node-only, glibc for the host llama binary) ----
 FROM node:22-trixie-slim AS runtime
 
@@ -27,7 +38,7 @@ COPY gateway/package.json gateway/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/public ./public
+COPY --from=ui /app/dist ./public
 
 EXPOSE 8080
 

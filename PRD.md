@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-opencode-pi is a self-hosted, LAN-only local AI control center running on a Raspberry Pi 5. It runs a quantized Qwen2.5-Coder-3B-Instruct (Q4_K_M) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on the local network, and ships a clean, single-file browser control center for monitoring and operating the system.
+opencode-pi is a self-hosted, LAN-only local AI control center running on a Raspberry Pi 5. It runs a quantized Qwen2.5-Coder-3B-Instruct (Q4_K_M) GGUF model through llama.cpp's `llama-server`, exposes an OpenAI-compatible inference API to OpenCode (and any OpenAI-compatible client) on the local network, and ships a React + Vite + Tailwind browser control center (built from `ui/` into `gateway/public/`) for monitoring and operating the system.
 
 The inference path is deliberately simple and isolated: one Express gateway is the single entry point for every client, and the model server is bound to localhost only. Nothing touches the model except the gateway.
 
@@ -77,7 +77,7 @@ The initial version will NOT:
                  │  node http-proxy          │  ← lightweight reverse proxy
                  │  (lite nginx role)        │
                  │                           │
-                 │  Static UI      GET /     │  → public/index.html
+                 │  Static UI      GET /     │  → public/index.html + assets/ (SPA from ui/)
                  │  Control API    /api/*    │  (admin key)
                  │  OpenAI API     /v1/*     │  (inference key, proxied)
                  │  WebSocket      /ws       │  (admin key)
@@ -131,7 +131,7 @@ llama-server
 - **Model status / gateway status.** Reports state for both.
 - **Request logging.** Logs request lifecycle without logging prompt or response contents by default.
 - **Streaming response forwarding.** Streams `llama-server` responses through to OpenAI-compatible clients without buffering.
-- **Static UI.** Serves the control center from `gateway/public/index.html`.
+- **Static UI.** Serves the control-center SPA (React + Vite + Tailwind, built in `ui/`) from `gateway/public/index.html` + `public/assets/`.
 - **Control plane.** `/api/*` endpoints for status, model management, and operations.
 - **Realtime plane.** WebSocket server on `/ws`.
 - **Model management.** Owns the model lifecycle: download/update, atomic swap, restart, tracking load status.
@@ -166,13 +166,24 @@ opencode-pi/
 ├── model/
 │   └── README.md            ← documents the model-as-data convention and /opt/qwen-model
 │
+├── ui/                      ← control-center UI (React + Vite + Tailwind, TypeScript)
+│   └── dist/                ← build output → copied into gateway/public/ (swap)
+│
 ├── gateway/                 ← Express gateway (TypeScript)
-│   ├── public/
-│   │   └── index.html       ← single-file control center UI
+│   ├── public/              ← served by express.static: built SPA (index.html + assets/)
 │   ├── src/                 ← server, proxy, auth, model, config, log, metrics, ws, llama
 │   ├── test/                ← vitest (auth rules, log ring)
 │   ├── package.json
 │   └── tsconfig.json
+│
+├── analytics/               ← analytics & risk microservice (Python/FastAPI, internal :8081)
+│   ├── app/                 ← nn, features, training, warehouse, events, cron, runtime, service
+│   ├── tests/
+│   ├── README.md            ← service operation doc
+│   └── Dockerfile
+│
+├── docs/
+│   └── analytics-layer.md   ← analytics & risk layer design (data contracts)
 │
 └── scripts/                 ← host-side and container-side tooling
     ├── entrypoint.sh        ← container entrypoint: signals, ensure model, exec node gateway
@@ -261,8 +272,10 @@ The actual model directory lives outside the repository: `/opt/qwen-model/`.
 The system MUST provide a browser-based control center.
 
 Frontend:
-- Single-file `index.html` (vanilla HTML/CSS/JS, no build step), following the established `rules-site/index.html` design pattern
-- Served by the Node/Express gateway
+- Control-center SPA built with React + Vite + Tailwind in `ui/` (TypeScript); the
+  built bundle is copied into `gateway/public/` and served by the Node/Express gateway.
+  *Earlier single-file `index.html` (vanilla HTML/CSS/JS) spec — now superseded (see §9 status
+  note and `.ai/sessions/ui-refactor/`).*
 
 The control center MUST provide:
 
@@ -313,6 +326,12 @@ log
 ```
 
 ### 6.12 Control Center v2 (UI plan)
+
+> **Status (2026-09-08): implemented.** The v2 UI ships as the React + Vite + Tailwind
+> SPA under `ui/`, built into `gateway/public/` (one-shot swap from `ui/dist`; `.card`
+> padding, `full`/`span2` grid spans, and the 9-view nav are live). Section 9 below is
+> kept as the historical spec. Work records: `.ai/sessions/ui-refactor/`,
+> `.ai/decisions/ui-refactor/`, README § "UI development".
 
 43. **Inference request ring.** The gateway keeps a bounded, in-memory ring of inference
     request lifecycle records (`started` / `completed` / `error`). Each record carries:
@@ -655,7 +674,11 @@ The `system.metrics` event is pushed periodically so the frontend never needs to
 
 ## 9. Control Center UI
 
-Single-file `index.html` (`gateway/public/index.html`), vanilla HTML/CSS/JS, clean design consistent with the existing `rules-site/index.html` project — no framework, no build tooling, hostable/servable by the gateway directly.
+> **Status (2026-09-08): superseded by the `ui/` SPA** (React + Vite + Tailwind; all
+> requirements below are covered by the new 9-view app served from `gateway/public/` —
+> see §6.12 status note and `.ai/sessions/ui-refactor/`). This section is the historical
+> single-file spec: `index.html` target with vanilla HTML/CSS/JS, no framework, no build
+> tooling.
 
 ### 9.1 Dashboard
 

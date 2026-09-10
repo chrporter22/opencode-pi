@@ -36,6 +36,9 @@ _DEFAULT_DOC = {
     "pcaComponents": None,
     "watchZ": None,
     "highZ": None,
+    "labelPWatch": None,
+    "labelPHigh": None,
+    "labelMode": "p_value",
     "featureFilter": [True] * len(FEATURE_NAMES),
     "cron": None,
     "watermark": None,
@@ -102,6 +105,9 @@ class RuntimeConfig:
             "pcaComponents": self.pca_components,
             "watchZ": self.watch_z,
             "highZ": self.high_z,
+            "labelPWatch": self.label_p_watch,
+            "labelPHigh": self.label_p_high,
+            "labelMode": self.label_mode,
             "featureFilter": self.feature_filter,
             "cron": self.cron,
             "watermark": self.watermark,
@@ -154,6 +160,22 @@ class RuntimeConfig:
     @property
     def high_z(self) -> float:
         return _clean_num(self.doc.get("highZ"), self.cfg.high_z)
+
+    @property
+    def label_p_watch(self) -> float:
+        """T² p-value tier for watch (significant below this)."""
+        return _clean_num(self.doc.get("labelPWatch"), self.cfg.label_p_watch)
+
+    @property
+    def label_p_high(self) -> float:
+        """T² p-value tier for high (significant below this)."""
+        return _clean_num(self.doc.get("labelPHigh"), self.cfg.label_p_high)
+
+    @property
+    def label_mode(self) -> str:
+        """Label mode: 'p_value' (default) or 'z_score'."""
+        val = str(self.doc.get("labelMode") or "p_value").lower()
+        return val if val in ("p_value", "z_score") else "p_value"
 
     @property
     def cron(self) -> str | None:

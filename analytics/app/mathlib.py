@@ -195,6 +195,23 @@ def hotelling(pcz: np.ndarray) -> tuple[float, float]:
     return t2, p
 
 
+def label_from_p(p: float | None, p_watch: float = 0.10, p_high: float = 0.05) -> str:
+    """Three-tier drift label from the Hotelling T² p-value (lower p = more drift).
+
+    p >= watch → normal (no significant drift), high <= p < watch → watch
+    (significant at the 90% tier), p < high → high (significant at 95%).
+    A missing/invalid p stays normal for safety.
+    """
+    if p is None:
+        return "normal"
+    p = float(p)
+    if p < p_high:
+        return "high"
+    if p < p_watch:
+        return "watch"
+    return "normal"
+
+
 def confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, n: int = 3) -> np.ndarray:
     """n×n confusion matrix from integer class labels."""
     cm = np.zeros((n, n), dtype=int)

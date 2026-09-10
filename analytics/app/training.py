@@ -90,7 +90,7 @@ class TrainingOrchestrator:
             "tfliteModel": str(tm) if tm.exists() else None,
             "modelBytes": sm.stat().st_size if sm.exists() else None,
             "tfliteBytes": tm.stat().st_size if tm.exists() else None,
-            "modelActive": tm.exists(),
+            "modelActive": tm.exists() and tm.stat().st_size >= 1,
             "modelMetadata": active.get("metadata") if active else None,
             "trainedUpTo": self.runtime.watermark
             if self.state.get("trainedUpTo") is None else self.state.get("trainedUpTo"),
@@ -101,7 +101,6 @@ class TrainingOrchestrator:
         st = self.status()
         if st["state"] == "running":
             return False
-        # First build: need enough labeled windows.
         if not st["modelActive"] and st["rows"] >= st["minRows"]:
             return True
         # Incremental fine-tune: only when new labeled windows exist past the
@@ -117,6 +116,25 @@ class TrainingOrchestrator:
         if not self.should_train():
             return False
         return self.start(analyzer)
+
+    def clear_stuck(self) -> bool:
+        """Reset a stale persisted 'running' state.
+
+        Training threads never survive a process restart, so at startup a
+        persisted `running` state is by definition orphaned. This keeps the
+        Train button and auto-train gating working after container restarts.
+        """
+        if self.state.get("state") != "running":
+            return False
+        started = self.state.get("startedAt")
+        if started is not None and isinstance(started, (int, float)) and \
+                (now_ms() - int(started)) < 30_000:
+            return False
+        self.state["state"] = "idle"
+        self.state["error"] = "stale run reset on startup (previous process gone)"
+        self.state["finishedAt"] = now_ms()
+        self._persist()
+        return True
 
     def start(self, analyzer, mode: str = "auto") -> bool:
         if mode not in ("auto", "watermark", "full"):
@@ -314,8 +332,12 @@ class TrainingOrchestrator:
         converter = tf.lite.TFLiteConverter.from_keras_model(model)
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
         tflite_model = converter.convert()
+        if not tflite_model:
+            raise RuntimeError("tflite conversion produced an empty artifact")
         tm_path = model_tflite_path(self.cfg)
-        tm_path.write_bytes(tflite_model)
+        tmp_path = tm_path.with_suffix(tm_path.suffix + ".tmp")
+        tmp_path.write_bytes(tflite_model)
+        tmp_path.replace(tm_path)
 
         used_epochs = best["config"]["epochs"]
         watermark = self.store.training_max_window_start() or now_ms()

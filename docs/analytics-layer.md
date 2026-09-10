@@ -322,26 +322,55 @@ export interface HistoryPoint {
 - Qwen3 thinking-share feature (explicit approval required).
 - Per-request live scoring at high RPS (would revisit C++ serving — not needed at 60s cadence).
 
-## 12. UI surface (gateway `public/index.html`)
+## 12. UI surface (React SPA `ui/`, ML Analytics view)
 
-- **ML Analytics page** (`ml-analytics`, sidebar under Tools): risk scorecard (risk level,
-  Hotelling T² / p-value, compute·nn ms, windows scored, input→TF rows), a **docs & flow panel**
-  (visual pipeline flowchart + links to this doc), 3D PCA explorer (square-ish canvas, light
-  gridlines, viridis dot coloring by max|z| with gradient key, drag rotate / wheel zoom / hover
-  inspect / click pin, dim cycling, tooltip shows window count = sample size), drift·T² bar
-  history, per-feature z box-plots (rotated readable x labels + numeric y σ gridlines,
-  current-window diamond), telemetry sparklines in one row (T², compute ms, nn ms, F1, rows),
-  full-width training panel (state, rows/min, run, trials·epochs, artifacts, best model, per-trial
-  log, Run training / Infer / Rebaseline / Refresh meta, run history table), models table,
-  and the config panel (**context windows = Qwen model `--ctx-size`, read-only** — analyzer
-  window count is fixed by `ANALYTICS_CONTEXT_WINDOWS`; removed the old editable `cfgCtx`).
-- **Pipelines page:** each pipeline card (inference, model update, warehouse, TF training)
+> **2026-09-08:** the control center was refactored from `gateway/public/index.html`
+> into a React + Vite + Tailwind SPA (`ui/`), built into `gateway/public/`. The
+> ML Analytics view below is part of that app. History: `.ai/sessions/ui-refactor/`.
+> **2026-09-09:** ML page grouped into labeled sections (Live NN scoring · drift/
+> telemetry/box-plots · PCA explorer · Training & backtesting · models · pipeline
+> docs · **filters & runtime at the bottom**); labels are now **Hotelling T² p-value
+> tiers** (see § below), and the page gained a backtest panel, a TF-inference button
+> on the scorecard, and inline error surfacing on every ML action. no-feedback-loop
+> note below still holds (backtest writes to the SEPARATE `backtest_*` dataset).
+> **2026-09-09 (round 2):** the scorecard now distinguishes the **pipeline label**
+> (`level`, "T² p" chip — incoming window's PCA/EWMA tier, computed on ingest and
+> stored in SQLite) from the **tf-lite class** (`nnRisk`); the three probability
+> bars fill the model's **true % per class** exactly (zeros/very small values keep
+> a 6px hairline so no bar vanishes; no fabricated mass — earlier attempt added a
+> display floor, which pinned the losing classes and was removed on user feedback).
+> **Context window counts** became a first-class pipeline metric:
+> `risk.contextWindows/contextCap` + `meta.context {count, cap}` (EWMA/PCA sample
+> buffer, cap = `ANALYTICS_CONTEXT_WINDOWS`), surfaced on the scorecard, Live card,
+> Metrics context spark, and the pipeline-docs flow.
+
+- **ML Analytics view** (nav → **ML Analytics**): risk scorecard (pipeline label
+  "T² p" chip + TF-Lite class chip, three per-class probability bars where
+  fill = displayed %, a 6px hairline for ~0% classes, `◂` on the pipeline tier,
+  Hotelling T² / p-value, compute·nn ms, context windows N/cap, windows scored,
+  per-PC z bars as secondary), a **docs & flow panel** (visual pipeline
+  flowchart + links to this doc), 3D PCA explorer (square-ish canvas, light gridlines,
+  viridis dot coloring by max|z| with gradient key, drag rotate / wheel zoom (x/y, gentle,
+  range 0.15–12) / hover inspect / click pin, dim cycling, tooltip shows window count
+  = sample size), drift·T² bar history, per-feature z box-plots (rotated readable x
+  labels + numeric y σ gridlines, current-window diamond), telemetry sparklines in one
+  row (T², compute ms, nn ms, ctx windows, F1, rows), full-width training panel (state, rows/min,
+  run, trials·epochs, artifacts, best model, per-trial log, Run training / Run TF
+  inference / Rebaseline / Refresh meta, run history table), **backtest panel**
+  (Backtest model · Train & backtest · Relabel dataset (T² p) · Clear watermark ·
+  Refresh; last-run summary incl. coverage, model watermark, agreement and macro
+  metrics; per-sample agreement table: actual vs tf-lite class, probability bars,
+  ✓/✗), models table, and the config panel (**context windows = Qwen model
+  `--ctx-size`, read-only** — analyzer window count is fixed by
+  `ANALYTICS_CONTEXT_WINDOWS`; removed the old editable `cfgCtx`). Filters & runtime
+  config are pinned to the **bottom** of the page.
+- **Pipelines view:** each pipeline card (inference, model update, warehouse, TF training)
   carries its own live mini-stream of the relevant WS events plus note field.
-- **Dashboard:** compact ML scorecard + a working **Live activity** event log (history
+- **Overview:** compact ML scorecard + a working **Live activity** event log (history
   backfilled from `/api/logs`, Clear button, routes request/analytics/training/model events).
-- All pages log via the tagged log widget; logs filter by level **and source** (All / ML /
+- All views log via the tagged log widget; logs filter by level **and source** (All / ML /
   Requests / System); `analytics.*` / `training.*` rows carry the `ml` tag.
-- Metrics page adds ML telemetry sparks (labeled rows, windows, requests, tflite size) fed by
+- Metrics view adds ML telemetry sparks (labeled rows, windows, requests, tflite size) fed by
   the 5s refresh; per-page statusbar segments exist for every view; compact row-level mode is
   the default (`piCompact`).
 - Connections: quick-sync button on every card + **ML artifact store** card (`/opt/qwen-ml`);
@@ -352,3 +381,32 @@ export interface HistoryPoint {
   training panel (+ stream to the pipeline mini-logs).
 - TF write-back semantics: writing back the trained net's predictions as telemetry only — it does **not**
   relabel stored windows (no feedback loop into training labels).
+
+### 12.1 Labels (Hotelling T² p-value tiers) & backtesting
+
+- **Labels:** each window's `risk` tier comes from the Hotelling **T² p-value**:
+  `t2 = Σ pcz²`, `p = chi2_sf(6, t2)`, then `p ≥ 0.10 → normal`, `0.05 ≤ p < 0.10 →
+  watch`, `p < 0.05 → high` (`None → normal`). Tiers are runtime config
+  (`labelPWatch`/`labelPHigh`, env `ANALYTICS_LABEL_P_WATCH`/`_LABEL_P_HIGH`).
+  PCA z / σ / loadings / eigen remain stored for the cloud & box-plots only. A full
+  re-derivation is a first-class admin action: `POST /v1/analytics/relabel`
+  (idempotent upsert of `risk`/`t2`/`p_value`, returns new class counts).
+- **Label mode (`labelMode`, env `ANALYTICS_LABEL_MODE`):** `p_value` (default) uses
+  the Hotelling T² p-value tiers above; `z_score` switches label derivation to PCA
+  **z-score** thresholds on the top-3 PCs (`watchZ`/`highZ` via
+  `mathlib.risk_label(pcz, watch_z, high_z)`). Live ingest happens to compute t2/p
+  in parallel but assigns the label per the active mode. Picking the mode is an
+  admin action: the relabel endpoint accepts `{mode, pWatch, pHigh, watchZ, highZ,
+  retrain}` and persists the choice in runtime config before recomputing labels
+  (`retrain: true` also kicks a full retrain). The gateway relays the same JSON body
+  to analytics (`x-ingest-secret`) — the proxy must forward `req.body`.
+- **Backtesting:** `analytics/app/backtest.py` `Backtester`. `mode=current` scores
+  every window with the current model; `mode=train` records the pre-run watermark,
+  runs a **full retrain**, then backtests only windows strictly after that watermark
+  (true hold-out). Predictions go to the SEPARATE `backtest_runs`/`backtest_samples`
+  tables (windowStart, actual, nnRisk, nnProb, modelWatermark, match) — the live
+  `windows` `nn_*` columns are untouched, so runs are reproducible and the training
+  feed never sees backtest output. Admin surface via the UI panel or
+  `POST /v1/analytics/backtest`, `GET /v1/analytics/backtest/{status,runs,samples}`.
+- **Clear watermark:** `POST /v1/analytics/watermark/clear` resets the training
+  watermark (runtime + trainer) so the next training is a full retrain.

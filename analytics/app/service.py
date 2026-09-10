@@ -23,7 +23,7 @@ def _pca_summary(window_start: int, ts: int, loadings: np.ndarray,
                  eigen: np.ndarray, scores: np.ndarray, pcz: np.ndarray,
                  level: str, t2: float, p_value: float, mu: np.ndarray,
                  std: np.ndarray, compute_ms: float, windows_scored: int,
-                 model_active: bool) -> ScoreRecord:
+                 model_active: bool, context_windows: int, context_cap: int) -> ScoreRecord:
     total = float(eigen.sum()) if eigen.size else 0.0
     variance = [float(e) / total if total > 0 else 0.0 for e in eigen]
     return ScoreRecord({
@@ -46,6 +46,8 @@ def _pca_summary(window_start: int, ts: int, loadings: np.ndarray,
         "pValue": p_value,
         "computeMs": compute_ms,
         "windowsScored": windows_scored,
+        "contextWindows": context_windows,
+        "contextCap": context_cap,
         "modelActive": model_active,
         "pcScores": [
             {"i": i, "z": float(z), "value": float(v)}
@@ -114,7 +116,8 @@ class Analyzer:
             return True
         from .config import model_tflite_path  # noqa: PLC0415
 
-        return model_tflite_path(self.cfg).exists()
+        path = model_tflite_path(self.cfg)
+        return path.exists() and path.stat().st_size >= 1
 
     def _classify(self, xf: np.ndarray) -> dict | None:
         if not self._model_active():
@@ -194,8 +197,12 @@ class Analyzer:
             if pca is not None:
                 loadings, eigen, scores = pca
                 pcz = scores[-1] / np.sqrt(np.maximum(eigen, 1e-8))
-                level = mathlib.risk_label(pcz, self.runtime.watch_z, self.runtime.high_z)
                 t2, p_value = mathlib.hotelling(pcz)
+                if self.runtime.label_mode == "z_score":
+                    level = mathlib.risk_label(pcz, self.runtime.watch_z, self.runtime.high_z)
+                else:
+                    level = mathlib.label_from_p(
+                        p_value, self.runtime.label_p_watch, self.runtime.label_p_high)
                 pcs = pcz
 
         compute_ms = float(now_ms() - t0)
@@ -236,6 +243,8 @@ class Analyzer:
                 compute_ms=compute_ms,
                 windows_scored=self.reference.n,
                 model_active=self._model_active(),
+                context_windows=len(self.context),
+                context_cap=self.runtime.context_windows,
             )
             if nn:
                 record.update(nn)
@@ -248,12 +257,16 @@ class Analyzer:
     def risk(self) -> dict:
         if self.latest_score is not None:
             return dict(self.latest_score)
-        return {"level": None, "risk": None, "windowsScored": self.reference.n}
+        return {"level": None, "risk": None, "windowsScored": self.reference.n,
+                "contextWindows": len(self.context),
+                "contextCap": self.runtime.context_windows}
 
     def pca_summary(self) -> dict:
         if self.latest_score is not None:
             return dict(self.latest_score)
-        return {"risk": None, "windowsScored": self.reference.n}
+        return {"risk": None, "windowsScored": self.reference.n,
+                "contextWindows": len(self.context),
+                "contextCap": self.runtime.context_windows}
 
     def history(self, limit: int = 120) -> list[dict]:
         rows = self.store.history_windows(limit)
@@ -384,6 +397,7 @@ class Analyzer:
             "requests": self.store.count_requests(),
             "dim": self.reference.dim,
             "referenceN": self.reference.n,
+            "context": {"count": len(self.context), "cap": self.runtime.context_windows},
             "thresholds": {"watchZ": self.runtime.watch_z, "highZ": self.runtime.high_z},
             "inputFeatures": inputs,
             "inputFilter": [{"name": name, "enabled": bool(flag)}
